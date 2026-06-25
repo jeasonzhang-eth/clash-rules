@@ -63,4 +63,6 @@ Clash/Provider/AdBlock.yaml
 Clash/Provider/HTTPDNS.yaml
 Clash/Provider/TikTok.yaml
 Clash/Provider/Douyin.yaml
+Custom/MyProxy.yaml
+Custom/MyDirect.yaml
 Custom/appleai.yaml

@@ -67,6 +67,8 @@
 | HTTPDNS | `Clash/Provider/HTTPDNS.yaml` | 45 |   - DOMAIN/  - IP-CIDR/  - IP-CIDR6 |  Block HTTPDNS |
 | TikTok | `Clash/Provider/TikTok.yaml` | 12 |   - DOMAIN-SUFFIX |   # > TikTok |
 | Douyin | `Clash/Provider/Douyin.yaml` | 6 |   - DOMAIN-SUFFIX |   # > Douyin |
+| MyProxy | `Custom/MyProxy.yaml` | 1 |   - DOMAIN-SUFFIX |   # 个人·强制走代理（最高优先级，可覆盖 AdBlock 误拦）。 |
+| MyDirect | `Custom/MyDirect.yaml` | 1 |   - DOMAIN-SUFFIX |   # 个人·强制直连（最高优先级，可覆盖 AdBlock 误拦）。 |
 | appleai | `Custom/appleai.yaml` | 6 |   - DOMAIN/  - DOMAIN-SUFFIX |   # > AppleAI |
 
-**合计域名/规则条目：20008**（去重前，按文件累加）
+**合计域名/规则条目：20010**（去重前，按文件累加）

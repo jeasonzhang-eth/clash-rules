@@ -1,0 +1,5 @@
+payload:
+  # 个人·强制直连（最高优先级，可覆盖 AdBlock 误拦）。
+  # 由 rule-radar 网页「直连 / 放行·直连」按钮自动追加，也可手动加。
+  # 占位行保证非空，勿删：
+  - DOMAIN-SUFFIX,radar-keep-direct.invalid

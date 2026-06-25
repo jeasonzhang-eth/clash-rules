@@ -1,0 +1,18 @@
+# rule-radar：规则雷达（监测 + 改规则 + 本地 serve 规则集）
+# 跑在网关 iStoreOS。host 网络：直接访问 mihomo 控制器 127.0.0.1:9090，并在 LAN 暴露 3003。
+# 部署：把整个 clash-rules 仓 clone 到网关，在本目录 `docker compose up -d`。
+services:
+  rule-radar:
+    image: node:20-alpine
+    container_name: rule-radar
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - PORT=3003
+      - REPO=/repo
+      - CTRL=http://127.0.0.1:9090
+      - SS_CTRL_SECRET=A1tK9Q0h # OpenClash 面板密码 = 控制器 secret
+      - INTERVAL=30
+    volumes:
+      - ../:/repo # 挂整个 clash-rules 仓（serve + 编辑都在这里）
+    command: node /repo/server/server.js

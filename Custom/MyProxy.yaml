@@ -1,0 +1,5 @@
+payload:
+  # 个人·强制走代理（最高优先级，可覆盖 AdBlock 误拦）。
+  # 由 rule-radar 网页「走代理 / 放行·代理」按钮自动追加，也可手动加。
+  # 占位行保证非空，勿删：
+  - DOMAIN-SUFFIX,radar-keep-proxy.invalid
