@@ -1,0 +1,62 @@
+# override.js (tools/sub-store) 实际引用的规则集，相对本仓根的路径。
+# inventory.sh 据此生成 INVENTORY.md；sync-upstream.sh 据此只 diff 这些文件。
+# 一行一个路径，# 开头为注释。新增/删除引用时同步改这里。
+Clash/Provider/Media/ABC.yaml
+Clash/Provider/Media/Abema TV.yaml
+Clash/Provider/Media/Amazon.yaml
+Clash/Provider/Apple.yaml
+Clash/Provider/Media/Apple Music.yaml
+Clash/Provider/Media/Apple News.yaml
+Clash/Provider/Media/Apple TV.yaml
+Clash/Provider/Media/BBC iPlayer.yaml
+Clash/Provider/Media/Bahamut.yaml
+Clash/Provider/Media/Bilibili.yaml
+Clash/Provider/Crypto.yaml
+Clash/Provider/Media/DAZN.yaml
+Clash/Provider/Discord.yaml
+Clash/Provider/Media/Discovery Plus.yaml
+Clash/Provider/Media/Disney Plus.yaml
+Clash/Provider/Domestic.yaml
+Clash/Provider/Domestic IPs.yaml
+Clash/Provider/Media/F1 TV.yaml
+Clash/Provider/Media/Fox Now.yaml
+Clash/Provider/Media/Fox+.yaml
+Clash/Provider/Google FCM.yaml
+Clash/Provider/Media/Max.yaml
+Clash/Provider/Media/Hulu.yaml
+Clash/Provider/Media/Hulu Japan.yaml
+Clash/Provider/Media/IQ.yaml
+Clash/Provider/Media/IQIYI.yaml
+Clash/Provider/Media/JOOX.yaml
+Clash/Provider/Media/Japonx.yaml
+Clash/Provider/Media/KKBOX.yaml
+Clash/Provider/Media/KKTV.yaml
+Clash/Provider/LAN.yaml
+Clash/Provider/Media/Letv.yaml
+Clash/Provider/Media/Line TV.yaml
+Clash/Provider/Microsoft.yaml
+Clash/Provider/Media/Netease Music.yaml
+Clash/Provider/Media/Netflix.yaml
+Clash/Provider/Media/Niconico.yaml
+Clash/Provider/AI Suite.yaml
+Clash/Provider/Media/PBS.yaml
+Clash/Provider/Proxy.yaml
+Clash/Provider/Media/Pandora.yaml
+Clash/Provider/PayPal.yaml
+Clash/Provider/Media/Pornhub.yaml
+Clash/Provider/Scholar.yaml
+Clash/Provider/Media/Soundcloud.yaml
+Clash/Provider/Special.yaml
+Clash/Provider/Speedtest.yaml
+Clash/Provider/Media/Spotify.yaml
+Clash/Provider/Steam.yaml
+Clash/Provider/Telegram.yaml
+Clash/Provider/Media/Tencent Video.yaml
+Clash/Provider/Media/ViuTV.yaml
+Clash/Provider/Media/WeTV.yaml
+Clash/Provider/Media/YouTube.yaml
+Clash/Provider/Media/Youku.yaml
+Clash/Provider/Media/encoreTVB.yaml
+Clash/Provider/miHoYo.yaml
+Clash/Provider/Media/myTV SUPER.yaml
+Custom/appleai.yaml
