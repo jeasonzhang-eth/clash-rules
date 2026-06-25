@@ -104,6 +104,20 @@ async function refresh(name) {
     return 0;
   }
 }
+// 文件 → 控制器里的 provider 名（处理 AI Suite→OpenAI、Max→HBO Max 等别名）
+function providerName(file) {
+  for (const n in NAME2FILE) if (NAME2FILE[n] === file) return n;
+  return path.basename(file, ".yaml");
+}
+// 刷新后清 fake-ip 缓存，让已解析过的域名立刻按新规则走（否则只对新连接生效）
+async function flushFakeip() {
+  try {
+    await fetch(CTRL + "/cache/fakeip/flush", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + SECRET },
+    });
+  } catch (e) {}
+}
 function addDomain(file, domain, type) {
   const abs = safe(file);
   if (!abs) throw new Error("bad path");
@@ -304,8 +318,9 @@ const server = http.createServer(async (req, res) => {
     if (!abs || typeof b.content !== "string")
       return json(res, { error: "bad" }, 400);
     fs.writeFileSync(abs, b.content);
-    const name = path.basename(b.path, ".yaml");
+    const name = providerName(b.path);
     const code = await refresh(name);
+    await flushFakeip();
     return json(res, { ok: true, refreshed: name, status: code });
   }
   if (req.method === "POST" && p === "/api/add") {
@@ -322,6 +337,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, { error: String(e) }, 500);
     }
     const code = await refresh(name);
+    await flushFakeip();
     // 加进规则后从候选里移除，界面更干净
     if (state[domain]) {
       delete state[domain];
