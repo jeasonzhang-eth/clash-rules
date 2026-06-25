@@ -3,7 +3,6 @@ payload:
   # rule-radar 网页「直连 / 放行·直连」按钮会往这里追加，也可手动增删。
   # —— 机场/订阅域名、国内服务、镜像站 ——
   - DOMAIN-SUFFIX,feishu.cn
-  - DOMAIN-SUFFIX,beisuyinqing.tech
   - DOMAIN-SUFFIX,lanrar.com
   - DOMAIN-SUFFIX,mofeiyun.com
   - DOMAIN-SUFFIX,bigmodel.cn
