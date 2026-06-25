@@ -55,3 +55,11 @@ bash sync-upstream.sh --merge  # 确认后再合并
 `tools/sub-store/override.js` 的 rule-providers 指向网关本地 serve：
 `http://192.168.6.116:3003/rules/<path>`（由 rule-radar 提供）。
 GitHub 仓仍是备份与多端同步的来源（网关 `git pull` 更新）。
+
+## 网页「推送 GitHub」按钮（网关 → GitHub → Mac）
+
+rule-radar 网页右上角「⬆ 推送 GitHub」一键把仓内全部改动 `git add -A && commit && push`（`POST /api/push`）。
+
+- 工作流：网页改规则（即时生效，仅网关本地）→ 点「推送」上 GitHub → Mac 在 `code/personal/clash-rules` `git pull` → 父仓库 `git add` 更新 submodule 引用。
+- 网关 ssh 客户端是 **Dropbear**，不读 `~/.ssh/config`、用不了 OpenSSH 格式 key：复用 Mac 的 `github-jeasonzhang` key，`dropbearconvert` 成 `/root/.ssh/github-jeasonzhang.db`，remote 走 `ssh.github.com:443`，`core.sshCommand="ssh -y -i …db -p 443"`（宿主机 `git pull` 用）。
+- rule-radar **容器**是 Debian，自带 git+OpenSSH：`docker-compose.yml` 把 `/root/.ssh` 只读挂进容器，`/api/push` 用 `GIT_SSH_COMMAND`（OpenSSH 语法 + 原始 `github-jeasonzhang` key + `-p 443`）覆盖宿主机那条 dropbear 专用的 `core.sshCommand`。

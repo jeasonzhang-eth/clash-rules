@@ -6,6 +6,7 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const { execFile } = require("child_process");
 
 const REPO = process.env.REPO || "/repo";
 const PORT = parseInt(process.env.PORT || "3003", 10);
@@ -143,6 +144,44 @@ async function closeConns(filterFn) {
   } catch (e) {
     return 0;
   }
+}
+// 在仓库里跑 git。容器内用 OpenSSH + 原始 key 走 443，
+// 用 GIT_SSH_COMMAND 覆盖宿主机 .git/config 里 dropbear 专用的 core.sshCommand。
+function sh(args) {
+  return new Promise((resolve) => {
+    execFile(
+      "git",
+      args,
+      {
+        cwd: REPO,
+        env: {
+          ...process.env,
+          GIT_SSH_COMMAND:
+            "ssh -i /root/.ssh/github-jeasonzhang -p 443 -o IdentitiesOnly=yes" +
+            " -o UserKnownHostsFile=/tmp/gh_known_hosts -o StrictHostKeyChecking=accept-new",
+        },
+      },
+      (err, stdout, stderr) =>
+        resolve({
+          code: err ? err.code || 1 : 0,
+          out: (stdout || "") + (stderr || ""),
+        }),
+    );
+  });
+}
+// 网页「推送」按钮：把仓内全部改动 commit + push 到 GitHub（一次性）。
+async function gitPush() {
+  await sh(["add", "-A"]);
+  const diff = await sh(["diff", "--cached", "--quiet"]);
+  if (diff.code === 0) return { ok: true, nothing: true };
+  const stamp = new Date().toISOString().slice(0, 19).replace("T", " ");
+  const commit = await sh(["commit", "-m", "rules: web edit " + stamp]);
+  const push = await sh(["push", "origin", "HEAD:main"]);
+  return {
+    ok: push.code === 0,
+    committed: commit.code === 0,
+    log: (commit.out + "\n" + push.out).slice(-800),
+  };
 }
 function addDomain(file, domain, type) {
   const abs = safe(file);
@@ -393,6 +432,10 @@ const server = http.createServer(async (req, res) => {
     persist();
     return json(res, { ok: true });
   }
+  if (req.method === "POST" && p === "/api/push") {
+    const r = await gitPush();
+    return json(res, r, r.ok ? 200 : 500);
+  }
   if (p === "/" || p === "/index.html") {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(PAGE);
@@ -435,6 +478,7 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <span class="tab" data-t="edit" onclick="tab('edit')">改规则</span>
   <span class="tab" data-t="look" onclick="tab('look')">查规则</span>
   <span class="muted" id="meta"></span>
+  <button class="p" style="margin-left:auto" onclick="push()" title="把所有改动 commit 并推送到 GitHub">⬆ 推送 GitHub</button>
 </header>
 <main>
  <section id="mon">
@@ -484,6 +528,7 @@ async function loadCand(){
 async function add(host,target){const r=await (await fetch('/api/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain:host,target})})).json();toast((target==='direct'?'已直连 ':'已走代理 ')+host+(r.status>=200&&r.status<300?'（已生效）':'（刷新 '+r.status+'）'));loadCand();}
 async function drop(host){await fetch('/api/drop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({host})});loadCand();}
 async function reset(){if(!confirm('清空所有候选？'))return;await fetch('/api/reset',{method:'POST'});loadCand();}
+async function push(){toast('推送中…');try{const r=await (await fetch('/api/push',{method:'POST'})).json();if(r.nothing)toast('没有改动可推');else if(r.ok)toast('已推送 GitHub ✓');else{toast('推送失败，看控制台');console.log(r.log||r);}}catch(e){toast('推送出错');console.log(e);}}
 async function loadFiles(){const d=await (await fetch('/api/files')).json();const sel=$('#f');if(sel.dataset.done)return;sel.innerHTML=d.files.map(f=>'<option>'+f+'</option>').join('');sel.dataset.done=1;loadFile();}
 async function loadFile(){const f=$('#f').value;const d=await (await fetch('/api/file?path='+encodeURIComponent(f))).json();$('#ta').value=d.content||'';$('#fstat').textContent='';}
 async function save(){const f=$('#f').value;const r=await (await fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:f,content:$('#ta').value})})).json();$('#fstat').textContent=r.ok?'已保存·刷新 '+r.refreshed+'('+r.status+')·断开 '+(r.closed||0)+' 连接，即时生效':'失败';toast('已保存 '+f);}
