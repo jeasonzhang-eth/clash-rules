@@ -1,5 +1,18 @@
 payload:
   # 个人·强制直连（最高优先级，可覆盖 AdBlock 误拦）。
-  # 由 rule-radar 网页「直连 / 放行·直连」按钮自动追加，也可手动加。
-  # 占位行保证非空，勿删：
-  - DOMAIN-SUFFIX,radar-keep-direct.invalid
+  # rule-radar 网页「直连 / 放行·直连」按钮会往这里追加，也可手动增删。
+  # —— 机场/订阅域名、国内服务、镜像站 ——
+  - DOMAIN-SUFFIX,feishu.cn
+  - DOMAIN-SUFFIX,beisuyinqing.tech
+  - DOMAIN-SUFFIX,lanrar.com
+  - DOMAIN-SUFFIX,mofeiyun.com
+  - DOMAIN-SUFFIX,bigmodel.cn
+  - DOMAIN-SUFFIX,kunlun04dns.com
+  - DOMAIN-SUFFIX,subxiandan.top
+  - DOMAIN-SUFFIX,todust.cc
+  - DOMAIN-SUFFIX,monghye.yangliq.com
+  - DOMAIN-SUFFIX,hf-mirror.com
+  - DOMAIN-SUFFIX,codebuddy.cn
+  - DOMAIN-SUFFIX,aliyun.com
+  - DOMAIN-SUFFIX,appstoreprice.org
+  - DOMAIN-SUFFIX,aicard.credit

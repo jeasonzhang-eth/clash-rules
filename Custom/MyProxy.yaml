@@ -1,5 +1,56 @@
 payload:
   # 个人·强制走代理（最高优先级，可覆盖 AdBlock 误拦）。
-  # 由 rule-radar 网页「走代理 / 放行·代理」按钮自动追加，也可手动加。
-  # 占位行保证非空，勿删：
-  - DOMAIN-SUFFIX,radar-keep-proxy.invalid
+  # rule-radar 网页「走代理 / 放行·代理」按钮会往这里追加，也可手动增删。
+  # —— 海外财经/新闻/科技媒体、需代理的服务 ——
+  - DOMAIN-SUFFIX,larksuite.com
+  - DOMAIN-SUFFIX,fincept.in
+  - DOMAIN-SUFFIX,bloomberg.com
+  - DOMAIN-SUFFIX,dowjones.io
+  - DOMAIN-SUFFIX,dj.com
+  - DOMAIN-SUFFIX,marketwatch.com
+  - DOMAIN-SUFFIX,cnbc.com
+  - DOMAIN-SUFFIX,sec.gov
+  - DOMAIN-SUFFIX,federalreserve.gov
+  - DOMAIN-SUFFIX,bbci.co.uk
+  - DOMAIN-SUFFIX,bbc.co.uk
+  - DOMAIN-SUFFIX,theguardian.com
+  - DOMAIN-SUFFIX,nytimes.com
+  - DOMAIN-SUFFIX,bellingcat.com
+  - DOMAIN-SUFFIX,seekingalpha.com
+  - DOMAIN-SUFFIX,techcrunch.com
+  - DOMAIN-SUFFIX,france24.com
+  - DOMAIN-SUFFIX,rsshub.app
+  - DOMAIN-SUFFIX,oilprice.com
+  - DOMAIN-SUFFIX,un.org
+  - DOMAIN-SUFFIX,aljazeera.com
+  - DOMAIN-SUFFIX,scmp.com
+  - DOMAIN-SUFFIX,fxstreet.com
+  - DOMAIN-SUFFIX,foreignpolicy.com
+  - DOMAIN-SUFFIX,wired.com
+  - DOMAIN-SUFFIX,nikkei.com
+  - DOMAIN-SUFFIX,thehindu.com
+  - DOMAIN-SUFFIX,middleeasteye.net
+  - DOMAIN-SUFFIX,livemint.com
+  - DOMAIN-SUFFIX,benzinga.com
+  - DOMAIN-SUFFIX,mining.com
+  - DOMAIN-SUFFIX,dw.com
+  - DOMAIN-SUFFIX,arstechnica.com
+  - DOMAIN-SUFFIX,economictimes.indiatimes.com
+  - DOMAIN-SUFFIX,ecb.europa.eu
+  - DOMAIN-SUFFIX,economist.com
+  - DOMAIN-SUFFIX,investing.com
+  - DOMAIN-SUFFIX,wolfstreet.com
+  - DOMAIN-SUFFIX,channelnewsasia.com
+  - DOMAIN-SUFFIX,theblock.co
+  - DOMAIN-SUFFIX,cointelegraph.com
+  - DOMAIN-SUFFIX,decrypt.co
+  - DOMAIN-SUFFIX,bankofengland.co.uk
+  - DOMAIN-SUFFIX,hnrss.org
+  - DOMAIN-SUFFIX,technologyreview.com
+  - DOMAIN-SUFFIX,abnormalreturns.com
+  - DOMAIN-SUFFIX,carbonbrief.org
+  - DOMAIN-SUFFIX,marginalrevolution.com
+  - DOMAIN-SUFFIX,theverge.com
+  - DOMAIN-SUFFIX,finextra.com
+  - DOMAIN-SUFFIX,moneycontrol.com
+  - DOMAIN-SUFFIX,npmjs.org
