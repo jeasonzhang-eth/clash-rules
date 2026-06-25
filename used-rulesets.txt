@@ -59,4 +59,8 @@ Clash/Provider/Media/Youku.yaml
 Clash/Provider/Media/encoreTVB.yaml
 Clash/Provider/miHoYo.yaml
 Clash/Provider/Media/myTV SUPER.yaml
+Clash/Provider/AdBlock.yaml
+Clash/Provider/HTTPDNS.yaml
+Clash/Provider/TikTok.yaml
+Clash/Provider/Douyin.yaml
 Custom/appleai.yaml

@@ -63,6 +63,10 @@
 | encoreTVB | `Clash/Provider/Media/encoreTVB.yaml` | 4 |   - DOMAIN/  - DOMAIN-SUFFIX/  - PROCESS-NAME |   # > encoreTVB |
 | miHoYo | `Clash/Provider/miHoYo.yaml` | 7 |   - DOMAIN-SUFFIX |   # > miHoYo |
 | myTV SUPER | `Clash/Provider/Media/myTV SUPER.yaml` | 4 |   - DOMAIN-KEYWORD/  - DOMAIN-SUFFIX |   # > myTV_SUPER |
+| AdBlock | `Clash/Provider/AdBlock.yaml` | 8237 |   - DOMAIN/  - DOMAIN-SUFFIX/  - IP-CIDR/  - IP-CIDR6 |  Ads in Video apps |
+| HTTPDNS | `Clash/Provider/HTTPDNS.yaml` | 45 |   - DOMAIN/  - IP-CIDR/  - IP-CIDR6 |  Block HTTPDNS |
+| TikTok | `Clash/Provider/TikTok.yaml` | 12 |   - DOMAIN-SUFFIX |   # > TikTok |
+| Douyin | `Clash/Provider/Douyin.yaml` | 6 |   - DOMAIN-SUFFIX |   # > Douyin |
 | appleai | `Custom/appleai.yaml` | 6 |   - DOMAIN/  - DOMAIN-SUFFIX |   # > AppleAI |
 
-**合计域名/规则条目：11708**（去重前，按文件累加）
+**合计域名/规则条目：20008**（去重前，按文件累加）
