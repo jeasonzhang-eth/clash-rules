@@ -118,6 +118,32 @@ async function flushFakeip() {
     });
   } catch (e) {}
 }
+// 断开连接，逼其用新规则重连。filterFn(host) 为空则断开全部。
+// 这是"改规则立刻见效"的关键——已建立的连接不会自己重新匹配。
+async function closeConns(filterFn) {
+  try {
+    const data = await (
+      await fetch(CTRL + "/connections", {
+        headers: { Authorization: "Bearer " + SECRET },
+      })
+    ).json();
+    let n = 0;
+    for (const c of data.connections || []) {
+      const m = c.metadata || {};
+      const host = (m.host || m.sniffHost || "").toLowerCase();
+      if (!filterFn || filterFn(host)) {
+        await fetch(CTRL + "/connections/" + c.id, {
+          method: "DELETE",
+          headers: { Authorization: "Bearer " + SECRET },
+        });
+        n++;
+      }
+    }
+    return n;
+  } catch (e) {
+    return 0;
+  }
+}
 function addDomain(file, domain, type) {
   const abs = safe(file);
   if (!abs) throw new Error("bad path");
@@ -321,7 +347,8 @@ const server = http.createServer(async (req, res) => {
     const name = providerName(b.path);
     const code = await refresh(name);
     await flushFakeip();
-    return json(res, { ok: true, refreshed: name, status: code });
+    const closed = await closeConns(); // 断开全部，逼新规则即时生效
+    return json(res, { ok: true, refreshed: name, status: code, closed });
   }
   if (req.method === "POST" && p === "/api/add") {
     const b = await body(req);
@@ -338,6 +365,8 @@ const server = http.createServer(async (req, res) => {
     }
     const code = await refresh(name);
     await flushFakeip();
+    // 只断开该域名相关连接，逼其用新规则重连（不影响其它流量）
+    await closeConns((h) => h === domain || h.endsWith("." + domain));
     // 加进规则后从候选里移除，界面更干净
     if (state[domain]) {
       delete state[domain];
@@ -457,6 +486,6 @@ async function drop(host){await fetch('/api/drop',{method:'POST',headers:{'Conte
 async function reset(){if(!confirm('清空所有候选？'))return;await fetch('/api/reset',{method:'POST'});loadCand();}
 async function loadFiles(){const d=await (await fetch('/api/files')).json();const sel=$('#f');if(sel.dataset.done)return;sel.innerHTML=d.files.map(f=>'<option>'+f+'</option>').join('');sel.dataset.done=1;loadFile();}
 async function loadFile(){const f=$('#f').value;const d=await (await fetch('/api/file?path='+encodeURIComponent(f))).json();$('#ta').value=d.content||'';$('#fstat').textContent='';}
-async function save(){const f=$('#f').value;const r=await (await fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:f,content:$('#ta').value})})).json();$('#fstat').textContent=r.ok?'已保存并刷新 '+r.refreshed+'（'+r.status+'）':'失败';toast('已保存 '+f);}
+async function save(){const f=$('#f').value;const r=await (await fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:f,content:$('#ta').value})})).json();$('#fstat').textContent=r.ok?'已保存·刷新 '+r.refreshed+'('+r.status+')·断开 '+(r.closed||0)+' 连接，即时生效':'失败';toast('已保存 '+f);}
 loadCand();setInterval(()=>{if($('#mon').style.display!=='none')loadCand();},15000);
 </script></body></html>`;
