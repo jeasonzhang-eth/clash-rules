@@ -12,7 +12,8 @@ const PORT = parseInt(process.env.PORT || "3003", 10);
 const CTRL = process.env.CTRL || "http://127.0.0.1:9090";
 const SECRET = process.env.SS_CTRL_SECRET || "A1tK9Q0h";
 const INTERVAL = parseInt(process.env.INTERVAL || "30", 10) * 1000;
-const STATE = process.env.STATE || path.join(REPO, "server/data/candidates.json");
+const STATE =
+  process.env.STATE || path.join(REPO, "server/data/candidates.json");
 
 // 个人规则文件（最高优先级，排在 AdBlock/HTTPDNS 之前 → 可覆盖误拦）
 const MYPROXY = "Custom/MyProxy.yaml"; // 强制走代理，provider 名 MyProxy
@@ -51,7 +52,13 @@ async function poll() {
     if (chains.indexOf("REJECT") >= 0) cat = "blocked";
     else if (/^match$/i.test(rule)) cat = "uncovered";
     if (!cat) continue;
-    const e = state[host] || { category: cat, first: now, hits: 0, up: 0, down: 0 };
+    const e = state[host] || {
+      category: cat,
+      first: now,
+      hits: 0,
+      up: 0,
+      down: 0,
+    };
     e.last = now;
     e.hits += 1;
     e.up = Math.max(e.up, c.upload || 0);
@@ -85,10 +92,13 @@ function listFiles() {
 }
 async function refresh(name) {
   try {
-    const r = await fetch(CTRL + "/providers/rules/" + encodeURIComponent(name), {
-      method: "PUT",
-      headers: { Authorization: "Bearer " + SECRET },
-    });
+    const r = await fetch(
+      CTRL + "/providers/rules/" + encodeURIComponent(name),
+      {
+        method: "PUT",
+        headers: { Authorization: "Bearer " + SECRET },
+      },
+    );
     return r.status;
   } catch (e) {
     return 0;
@@ -103,7 +113,10 @@ function addDomain(file, domain, type) {
   } catch (e) {
     content = "payload:\n";
   }
-  if (content.indexOf("," + domain + "\n") >= 0 || content.endsWith("," + domain))
+  if (
+    content.indexOf("," + domain + "\n") >= 0 ||
+    content.endsWith("," + domain)
+  )
     return false; // 已存在
   if (!/payload:/.test(content)) content = "payload:\n" + content;
   if (!content.endsWith("\n")) content += "\n";
@@ -111,6 +124,118 @@ function addDomain(file, domain, type) {
   fs.writeFileSync(abs, content);
   return true;
 }
+
+// ── 域名 → 命中哪个规则集 ──────────────────────────────────
+// 规则集 name(控制器里的 payload) 与文件名不一致的少数别名：
+const NAME2FILE = {
+  OpenAI: "Clash/Provider/AI Suite.yaml",
+  "HBO Max": "Clash/Provider/Media/Max.yaml",
+  AppleAI: "Custom/appleai.yaml",
+  PROXY: "Clash/Provider/Proxy.yaml",
+};
+let _idx = null;
+function fileOf(name) {
+  if (NAME2FILE[name]) return NAME2FILE[name];
+  if (!_idx) {
+    _idx = {};
+    for (const f of listFiles()) _idx[path.basename(f, ".yaml")] = f;
+  }
+  return _idx[name] || null;
+}
+function domMatch(domain, type, val) {
+  if (!val) return false;
+  val = val.toLowerCase();
+  if (type === "DOMAIN") return domain === val;
+  if (type === "DOMAIN-SUFFIX")
+    return domain === val || domain.endsWith("." + val);
+  if (type === "DOMAIN-KEYWORD") return domain.indexOf(val) >= 0;
+  if (type === "DOMAIN-REGEX") {
+    try {
+      return new RegExp(val).test(domain);
+    } catch (e) {
+      return false;
+    }
+  }
+  return false;
+}
+function matchInFile(file, domain) {
+  const abs = safe(file);
+  if (!abs) return null;
+  let txt = "";
+  try {
+    txt = fs.readFileSync(abs, "utf8");
+  } catch (e) {
+    return null;
+  }
+  for (const ln of txt.split("\n")) {
+    const m = ln.match(/^\s*-\s*([A-Z-]+),\s*([^,#\s]+)/);
+    if (m && domMatch(domain, m[1], m[2])) return m[1] + "," + m[2];
+  }
+  return null;
+}
+async function matchDomain(input) {
+  const domain = input.toLowerCase().trim();
+  let rules = [];
+  try {
+    rules =
+      (
+        await (
+          await fetch(CTRL + "/rules", {
+            headers: { Authorization: "Bearer " + SECRET },
+          })
+        ).json()
+      ).rules || [];
+  } catch (e) {}
+  const DT = {
+    Domain: "DOMAIN",
+    DomainSuffix: "DOMAIN-SUFFIX",
+    DomainKeyword: "DOMAIN-KEYWORD",
+    DomainRegex: "DOMAIN-REGEX",
+  };
+  let effective = null;
+  const allSets = [];
+  let skippedIP = false;
+  for (const r of rules) {
+    const type = r.type,
+      payload = r.payload,
+      group = r.proxy;
+    if (type === "RuleSet" || type === "RULE-SET") {
+      const file = fileOf(payload);
+      const hit = file ? matchInFile(file, domain) : null;
+      if (hit) {
+        const rec = { set: payload, group: group, pattern: hit, file: file };
+        allSets.push(rec);
+        if (!effective) effective = Object.assign({ kind: "ruleset" }, rec);
+      }
+    } else if (DT[type]) {
+      if (domMatch(domain, DT[type], payload) && !effective)
+        effective = {
+          kind: "direct",
+          set: "(override.js 直接规则)",
+          group: group,
+          pattern: DT[type] + "," + payload,
+        };
+    } else if (type === "Match" || type === "MATCH") {
+      if (!effective)
+        effective = {
+          kind: "match",
+          set: "(MATCH 兜底)",
+          group: group,
+          pattern: "MATCH",
+        };
+    } else if (
+      !effective &&
+      (type === "GeoIP" ||
+        type === "IPCIDR" ||
+        type === "IPCIDR6" ||
+        type === "SrcIPCIDR")
+    ) {
+      skippedIP = true; // 这些要解析 IP 才能判，域名维度跳过
+    }
+  }
+  return { domain, effective, allSets, skippedIP };
+}
+
 function body(req) {
   return new Promise((res) => {
     let b = "";
@@ -125,7 +250,9 @@ function body(req) {
   });
 }
 function json(res, obj, code) {
-  res.writeHead(code || 200, { "Content-Type": "application/json; charset=utf-8" });
+  res.writeHead(code || 200, {
+    "Content-Type": "application/json; charset=utf-8",
+  });
   res.end(JSON.stringify(obj));
 }
 
@@ -152,21 +279,30 @@ const server = http.createServer(async (req, res) => {
         .filter((x) => x[1].category === cat)
         .sort((a, b) => b[1].hits - a[1].hits)
         .map((x) => Object.assign({ host: x[0] }, x[1]));
-    return json(res, { uncovered: pick("uncovered"), blocked: pick("blocked") });
+    return json(res, {
+      uncovered: pick("uncovered"),
+      blocked: pick("blocked"),
+    });
+  }
+  if (p === "/api/match") {
+    const d = u.searchParams.get("domain") || "";
+    if (!d) return json(res, { error: "no domain" }, 400);
+    return json(res, await matchDomain(d));
   }
   if (p === "/api/files") return json(res, { files: listFiles() });
   if (p === "/api/file") {
     const abs = safe(u.searchParams.get("path") || "");
     if (!abs) return json(res, { error: "bad path" }, 400);
     fs.readFile(abs, "utf8", (e, d) =>
-      e ? json(res, { error: "not found" }, 404) : json(res, { content: d })
+      e ? json(res, { error: "not found" }, 404) : json(res, { content: d }),
     );
     return;
   }
   if (req.method === "POST" && p === "/api/save") {
     const b = await body(req);
     const abs = safe(b.path || "");
-    if (!abs || typeof b.content !== "string") return json(res, { error: "bad" }, 400);
+    if (!abs || typeof b.content !== "string")
+      return json(res, { error: "bad" }, 400);
     fs.writeFileSync(abs, b.content);
     const name = path.basename(b.path, ".yaml");
     const code = await refresh(name);
@@ -191,7 +327,13 @@ const server = http.createServer(async (req, res) => {
       delete state[domain];
       persist();
     }
-    return json(res, { ok: true, added, target, refreshed: name, status: code });
+    return json(res, {
+      ok: true,
+      added,
+      target,
+      refreshed: name,
+      status: code,
+    });
   }
   if (req.method === "POST" && p === "/api/drop") {
     const b = await body(req);
@@ -213,7 +355,9 @@ const server = http.createServer(async (req, res) => {
   }
   json(res, { error: "not found" }, 404);
 });
-server.listen(PORT, () => console.log("rule-radar on :" + PORT + " repo=" + REPO));
+server.listen(PORT, () =>
+  console.log("rule-radar on :" + PORT + " repo=" + REPO),
+);
 
 // ── 网页 ──────────────────────────────────────────────────
 const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
@@ -244,6 +388,7 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <h1>📡 规则雷达</h1>
   <span class="tab on" data-t="mon" onclick="tab('mon')">监测候选</span>
   <span class="tab" data-t="edit" onclick="tab('edit')">改规则</span>
+  <span class="tab" data-t="look" onclick="tab('look')">查规则</span>
   <span class="muted" id="meta"></span>
 </header>
 <main>
@@ -261,12 +406,28 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
    <span class="muted" id="fstat"></span></div>
   <textarea id="ta" spellcheck="false"></textarea>
  </section>
+ <section id="look" style="display:none">
+  <div class="row"><input id="dq" placeholder="输入域名，如 chat.openai.com" style="flex:1;min-width:240px;background:#0f1115;color:#cfe;border:1px solid #2a2e37;border-radius:8px;padding:8px 10px;font-family:ui-monospace,monospace" onkeydown="if(event.key==='Enter')mtest()">
+   <button class="p" onclick="mtest()">查询</button></div>
+  <div id="mres" class="muted">输入域名，看它命中哪个规则集、最终走哪个组。</div>
+ </section>
 </main>
 <div id="toast"></div>
 <script>
 const $=s=>document.querySelector(s);
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
-function tab(n){document.querySelectorAll('.tab').forEach(e=>e.classList.toggle('on',e.dataset.t===n));$('#mon').style.display=n==='mon'?'':'none';$('#edit').style.display=n==='edit'?'':'none';if(n==='edit')loadFiles();}
+function tab(n){document.querySelectorAll('.tab').forEach(e=>e.classList.toggle('on',e.dataset.t===n));['mon','edit','look'].forEach(s=>$('#'+s).style.display=s===n?'':'none');if(n==='edit')loadFiles();}
+async function mtest(){
+  const d=$('#dq').value.trim();if(!d)return;
+  $('#mres').innerHTML='查询中…';
+  const r=await (await fetch('/api/match?domain='+encodeURIComponent(d))).json();
+  let h='';
+  if(r.effective){const e=r.effective;h+='<div style="font-size:15px;margin:10px 0"><b>最终命中</b>：'+(e.kind==='ruleset'?'规则集 <code>'+e.set+'</code>':e.set)+' → 出口组 <b>'+e.group+'</b><br><span class=muted>匹配规则 '+e.pattern+(e.file?'（'+e.file+'）':'')+'</span></div>';}
+  else h+='<div class=muted style="margin:10px 0">没有任何域名规则命中（可能走 GEOIP/IP 规则或 MATCH 兜底）。</div>';
+  if(r.allSets&&r.allSets.length){h+='<h4>包含该域名的全部规则集（按规则顺序）</h4><table><thead><tr><th>规则集</th><th>出口组</th><th>匹配项</th></tr></thead><tbody>'+r.allSets.map(s=>'<tr><td>'+s.set+'</td><td>'+s.group+'</td><td class=muted>'+s.pattern+'</td></tr>').join('')+'</tbody></table>';}
+  if(r.skippedIP)h+='<div class=muted style="margin-top:8px">注：GEOIP/IP-CIDR 类规则需解析 IP，未参与计算，结果以域名规则为准。</div>';
+  $('#mres').innerHTML=h;
+}
 function hum(n){return n>1048576?(n/1048576).toFixed(1)+'M':n>1024?(n/1024).toFixed(1)+'K':n+'B';}
 async function loadCand(){
   const d=await (await fetch('/api/candidates')).json();
