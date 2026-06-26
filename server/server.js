@@ -404,8 +404,8 @@ const server = http.createServer(async (req, res) => {
     }
     const code = await refresh(name);
     await flushFakeip();
-    // 只断开该域名相关连接，逼其用新规则重连（不影响其它流量）
-    await closeConns((h) => h === domain || h.endsWith("." + domain));
+    // 断开全部连接，逼所有流量用新规则重连（与「保存并应用」一致）
+    const closed = await closeConns();
     // 加进规则后从候选里移除，界面更干净
     if (state[domain]) {
       delete state[domain];
@@ -417,6 +417,7 @@ const server = http.createServer(async (req, res) => {
       target,
       refreshed: name,
       status: code,
+      closed,
     });
   }
   if (req.method === "POST" && p === "/api/drop") {
@@ -525,7 +526,7 @@ async function loadCand(){
   $('#tb').innerHTML=d.blocked.map(r=>'<tr><td class="host">'+r.host+'</td><td>'+r.hits+'</td><td class="muted">'+hum(r.up)+' / '+hum(r.down)+'</td><td><button class="p" onclick="add(\\''+r.host+'\\',\\'proxy\\')">放行·代理</button> <button class="d" onclick="add(\\''+r.host+'\\',\\'direct\\')">放行·直连</button> <button onclick="drop(\\''+r.host+'\\')">忽略</button></td></tr>').join('')||'<tr><td colspan=4 class=muted>（暂无）</td></tr>';
   $('#meta').textContent='候选 '+(d.uncovered.length+d.blocked.length)+' 个 · 自动刷新';
 }
-async function add(host,target){const r=await (await fetch('/api/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain:host,target})})).json();toast((target==='direct'?'已直连 ':'已走代理 ')+host+(r.status>=200&&r.status<300?'（已生效）':'（刷新 '+r.status+'）'));loadCand();}
+async function add(host,target){const r=await (await fetch('/api/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain:host,target})})).json();toast((target==='direct'?'已直连 ':'已走代理 ')+host+'·断开 '+(r.closed||0)+' 连接'+(r.status>=200&&r.status<300?'（已生效）':'（刷新 '+r.status+'）'));loadCand();}
 async function drop(host){await fetch('/api/drop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({host})});loadCand();}
 async function reset(){if(!confirm('清空所有候选？'))return;await fetch('/api/reset',{method:'POST'});loadCand();}
 async function push(){toast('推送中…');try{const r=await (await fetch('/api/push',{method:'POST'})).json();if(r.nothing)toast('没有改动可推');else if(r.ok)toast('已推送 GitHub ✓');else{toast('推送失败，看控制台');console.log(r.log||r);}}catch(e){toast('推送出错');console.log(e);}}
