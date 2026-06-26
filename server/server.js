@@ -80,8 +80,8 @@ poll();
 // 这样重连只是变成新连接，增量继续累加到同一域名，历史总量不会归零。
 const TRAFFIC =
   process.env.TRAFFIC || path.join(REPO, "server/data/traffic.json");
-const TSAMPLE = parseInt(process.env.TSAMPLE || "5", 10) * 1000; // 采样间隔
-const TKEEP = parseInt(process.env.TKEEP || "30", 10); // 保留天数
+const TSAMPLE = parseInt(process.env.TSAMPLE || "3", 10) * 1000; // 采样间隔
+const TKEEP = parseInt(process.env.TKEEP || "3", 10); // 保留天数（按北京日期）
 const TZOFF = parseInt(process.env.TZOFF || "8", 10); // 时区偏移（北京 +8）
 let traffic = {};
 try {
@@ -818,13 +818,13 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <table><thead><tr><th>设备</th><th>来源IP</th><th>目标域名</th><th>出口链</th><th>规则</th><th>上行</th><th>下行</th><th>操作</th></tr></thead><tbody id="tc" data-tkey="conn"></tbody></table>
  </section>
  <section id="traf" style="display:none">
-  <div class="row"><label class="muted"><input type="checkbox" id="tauto" checked> 自动刷新(5s)</label>
+  <div class="row"><label class="muted"><input type="checkbox" id="tauto" checked> 自动刷新(3s)</label>
    <label class="muted">日期 <select id="tdate" onchange="loadTraffic()"></select></label>
    <span class="sub on" id="tgd" onclick="tgroup('domain')">主域名</span>
    <span class="sub" id="tgh" onclick="tgroup('host')">完整主机</span>
    <span class="muted" id="tmeta"></span></div>
   <div class="row" id="tsubs" style="gap:6px"></div>
-  <div class="row"><span class="muted" style="font-size:12px">采样自连接累计字节（每 5s），断连/重连不归零；只统计被采到的连接，极短连接可能漏算。</span></div>
+  <div class="row"><span class="muted" style="font-size:12px">采样自连接累计字节（每 3s），断连/重连不归零；只统计被采到的连接，极短连接可能漏算。</span></div>
   <table><thead><tr><th>域名</th><th>规则</th><th>上行</th><th>下行</th><th>合计</th></tr></thead><tbody id="tt" data-tkey="traf"></tbody></table>
  </section>
  <section id="edit" style="display:none">
@@ -944,5 +944,5 @@ async function loadTraffic(){
 (function(){let t='mon';try{t=localStorage.getItem('rr_tab')||'mon'}catch(e){}if(['mon','conn','traf','edit','look'].indexOf(t)<0)t='mon';tab(t);})();
 loadCand();setInterval(()=>{if($('#mon').style.display!=='none')loadCand();},15000);
 setInterval(()=>{if($('#conn').style.display!=='none'&&$('#cauto').checked)loadConns();},3000);
-setInterval(()=>{if($('#traf').style.display!=='none'&&$('#tauto').checked)loadTraffic();},5000);
+setInterval(()=>{if($('#traf').style.display!=='none'&&$('#tauto').checked)loadTraffic();},3000);
 </script></body></html>`;
