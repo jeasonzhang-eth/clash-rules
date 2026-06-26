@@ -60,3 +60,5 @@ payload:
   - DOMAIN-SUFFIX,dl.google.com
   - DOMAIN-SUFFIX,gvt2.com
   - DOMAIN-SUFFIX,gvt1.com
+  # —— Tailscale 控制平面（协调/登录/密钥交换，纯信令，走代理保证可靠上线）——
+  - DOMAIN,controlplane.tailscale.com

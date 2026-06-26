@@ -16,3 +16,5 @@ payload:
   - DOMAIN-SUFFIX,appstoreprice.org
   - DOMAIN-SUFFIX,aicard.credit
   - DOMAIN-SUFFIX,ipaddress.my
+  # —— Tailscale DERP 中继（实际转发流量，直连/就近，避免套代理绕路加延迟）——
+  - DOMAIN-REGEX,^derp.*\.tailscale\.com$
