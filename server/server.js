@@ -87,6 +87,19 @@ let traffic = {};
 try {
   traffic = JSON.parse(fs.readFileSync(TRAFFIC, "utf8"));
 } catch (e) {}
+// 清洗：只保留嵌套结构 traffic[日期][IP][域名]={up,down}。
+// 丢弃旧版扁平残留（traffic[日期][域名]={up,down}，其值直接含数字 up）。
+for (const day in traffic) {
+  const b = traffic[day];
+  if (!b || typeof b !== "object") {
+    delete traffic[day];
+    continue;
+  }
+  for (const k in b) {
+    const v = b[k];
+    if (!v || typeof v !== "object" || typeof v.up === "number") delete b[k];
+  }
+}
 let tprev = {}; // connId -> {up,down} 上次采样基线
 let tinit = false; // 是否已采过首轮（首轮只记基线）
 let tdirty = false;

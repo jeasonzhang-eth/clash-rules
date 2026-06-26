@@ -2,6 +2,7 @@
 
 ## 2026-06-26
 
+- rule-radar 流量统计：加载 traffic.json 时清洗旧版扁平残留（只保留嵌套结构），避免结构升级时新旧数据混杂导致的 NaN/空行。
 - rule-radar 流量统计：增加**按设备**统计。累计结构改为 `traffic[日期][来源IP][域名]`，查询时按 IP→设备名解析（改设备名实时反映）。新增设备子标签（「全部」+各设备带当日总量），可筛选某设备的域名流量；`GET /api/traffic` 增 `dev` 参数，返回 `devices` 列表。选中设备存 localStorage。
 - rule-radar 新增「流量统计」标签：按域名累计历史上下行流量。内核 `/connections` 的 up/down 只是单条连接存活期间的累计、断连重连即归零，故新增独立采样器（默认每 5s 拉一次，记上次基线算增量，累加进 `traffic[北京日期][域名]`，留 30 天，落盘 `server/data/traffic.json`），重连/短连接不丢量。支持选日期、按「主域名/完整主机」归并、点表头排序。新增 `GET /api/traffic`。
 - rule-radar：`.gitignore` 排除 `server/data/`，运行时数据（候选/设备名/流量）不再被「推送」按钮带上 GitHub。
