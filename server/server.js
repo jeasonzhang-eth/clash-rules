@@ -73,6 +73,142 @@ async function poll() {
 setInterval(poll, INTERVAL);
 poll();
 
+// ── 按域名累计历史流量 ─────────────────────────────────────
+// 内核不持久化历史：/connections 里每条连接的 upload/download 只是"该连接建连
+// 至今的累计字节"，连接断开→重连即新连接、计数从 0 重来。要按域名看历史总量，
+// 只能自己定时采样：记下每条连接上次的累计值，本次增量累加进 traffic[日期][域名]。
+// 这样重连只是变成新连接，增量继续累加到同一域名，历史总量不会归零。
+const TRAFFIC =
+  process.env.TRAFFIC || path.join(REPO, "server/data/traffic.json");
+const TSAMPLE = parseInt(process.env.TSAMPLE || "5", 10) * 1000; // 采样间隔
+const TKEEP = parseInt(process.env.TKEEP || "30", 10); // 保留天数
+const TZOFF = parseInt(process.env.TZOFF || "8", 10); // 时区偏移（北京 +8）
+let traffic = {};
+try {
+  traffic = JSON.parse(fs.readFileSync(TRAFFIC, "utf8"));
+} catch (e) {}
+let tprev = {}; // connId -> {up,down} 上次采样基线
+let tinit = false; // 是否已采过首轮（首轮只记基线）
+let tdirty = false;
+function dayKey() {
+  return new Date(Date.now() + TZOFF * 3600 * 1000).toISOString().slice(0, 10);
+}
+function persistTraffic() {
+  try {
+    fs.mkdirSync(path.dirname(TRAFFIC), { recursive: true });
+    fs.writeFileSync(TRAFFIC, JSON.stringify(traffic));
+  } catch (e) {}
+}
+function pruneTraffic() {
+  const days = Object.keys(traffic).sort();
+  while (days.length > TKEEP) delete traffic[days.shift()];
+}
+async function sampleTraffic() {
+  let data;
+  try {
+    data = await (
+      await fetch(CTRL + "/connections", {
+        headers: { Authorization: "Bearer " + SECRET },
+      })
+    ).json();
+  } catch (e) {
+    return;
+  }
+  const day = dayKey();
+  const bucket = traffic[day] || (traffic[day] = {});
+  const cur = {};
+  for (const c of data.connections || []) {
+    const m = c.metadata || {};
+    const host = (m.host || m.sniffHost || m.destinationIP || "").trim();
+    const up = c.upload || 0,
+      down = c.download || 0;
+    cur[c.id] = { up, down };
+    if (!host || !tinit) continue; // 首轮只建基线，不计增量
+    const pv = tprev[c.id];
+    let du, dd;
+    if (pv) {
+      du = up - pv.up;
+      dd = down - pv.down;
+      if (du < 0) du = up; // 计数器异常/复位，按当前值兜底
+      if (dd < 0) dd = down;
+    } else {
+      du = up; // 新连接（含重连）必从 ~0 起，直接计当前累计值
+      dd = down; // → 只出现一次的短连接也能抓到
+    }
+    if (du <= 0 && dd <= 0) continue;
+    const e = bucket[host] || { up: 0, down: 0 };
+    e.up += du;
+    e.down += dd;
+    bucket[host] = e;
+    tdirty = true;
+  }
+  tprev = cur; // 断开的连接自动从基线表消失
+  tinit = true;
+}
+setInterval(sampleTraffic, TSAMPLE);
+sampleTraffic();
+setInterval(() => {
+  if (tdirty) {
+    pruneTraffic();
+    persistTraffic();
+    tdirty = false;
+  }
+}, 60000);
+// 域名归并到可注册主域名（简易 PSL：含已知多段后缀）
+const MULTI_SUFFIX = new Set([
+  "com.cn",
+  "net.cn",
+  "org.cn",
+  "gov.cn",
+  "edu.cn",
+  "ac.cn",
+  "co.uk",
+  "org.uk",
+  "gov.uk",
+  "co.jp",
+  "com.hk",
+  "com.tw",
+  "com.au",
+]);
+function regdom(h) {
+  if (!h || /^[\d.]+$/.test(h) || h.indexOf(":") >= 0) return h; // IP/IPv6 原样
+  const p = h.split(".");
+  if (p.length <= 2) return h;
+  const last2 = p.slice(-2).join(".");
+  if (MULTI_SUFFIX.has(last2)) return p.slice(-3).join(".");
+  return last2;
+}
+function trafficRows(date, group) {
+  const bucket = traffic[date] || {};
+  let agg = bucket;
+  if (group === "domain") {
+    agg = {};
+    for (const h in bucket) {
+      const k = regdom(h);
+      const e = agg[k] || { up: 0, down: 0 };
+      e.up += bucket[h].up;
+      e.down += bucket[h].down;
+      agg[k] = e;
+    }
+  }
+  const rows = Object.entries(agg)
+    .map(([key, v]) => ({ key, up: v.up, down: v.down, total: v.up + v.down }))
+    .sort((a, b) => b.total - a.total);
+  let tu = 0,
+    td = 0;
+  for (const r of rows) {
+    tu += r.up;
+    td += r.down;
+  }
+  return {
+    date,
+    dates: Object.keys(traffic).sort().reverse(),
+    rows,
+    totalUp: tu,
+    totalDown: td,
+  };
+}
+
 // ── 工具 ──────────────────────────────────────────────────
 function safe(rel) {
   const full = path.normalize(path.join(REPO, rel));
@@ -527,6 +663,11 @@ const server = http.createServer(async (req, res) => {
   if (p === "/api/connections") {
     return json(res, await listConns());
   }
+  if (p === "/api/traffic") {
+    const date = u.searchParams.get("date") || dayKey();
+    const group = u.searchParams.get("group") === "host" ? "host" : "domain";
+    return json(res, trafficRows(date, group));
+  }
   if (req.method === "POST" && p === "/api/device") {
     const b = await body(req);
     const ip = (b.ip || "").trim();
@@ -593,6 +734,7 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <h1>📡 规则雷达</h1>
   <span class="tab on" data-t="mon" onclick="tab('mon')">监测候选</span>
   <span class="tab" data-t="conn" onclick="tab('conn')">所有连接</span>
+  <span class="tab" data-t="traf" onclick="tab('traf')">流量统计</span>
   <span class="tab" data-t="edit" onclick="tab('edit')">改规则</span>
   <span class="tab" data-t="look" onclick="tab('look')">查规则</span>
   <span class="muted" id="meta"></span>
@@ -615,6 +757,15 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <div class="row" id="csubs" style="gap:6px"></div>
   <table><thead><tr><th>设备</th><th>来源IP</th><th>目标域名</th><th>出口链</th><th>规则</th><th>上行</th><th>下行</th><th>操作</th></tr></thead><tbody id="tc" data-tkey="conn"></tbody></table>
  </section>
+ <section id="traf" style="display:none">
+  <div class="row"><button onclick="loadTraffic()">刷新</button>
+   <label class="muted">日期 <select id="tdate" onchange="loadTraffic()"></select></label>
+   <span class="sub on" id="tgd" onclick="tgroup('domain')">主域名</span>
+   <span class="sub" id="tgh" onclick="tgroup('host')">完整主机</span>
+   <span class="muted" id="tmeta"></span></div>
+  <div class="row"><span class="muted" style="font-size:12px">采样自连接累计字节（每 5s），断连/重连不归零；只统计被采到的连接，极短连接可能漏算。</span></div>
+  <table><thead><tr><th>域名</th><th>上行</th><th>下行</th><th>合计</th></tr></thead><tbody id="tt" data-tkey="traf"></tbody></table>
+ </section>
  <section id="edit" style="display:none">
   <div class="row"><select id="f" onchange="loadFile()"></select>
    <button class="p" onclick="save()">保存并应用（刷新该规则集）</button>
@@ -631,7 +782,7 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <script>
 const $=s=>document.querySelector(s);
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
-function tab(n){try{localStorage.setItem('rr_tab',n)}catch(e){}document.querySelectorAll('.tab').forEach(e=>e.classList.toggle('on',e.dataset.t===n));['mon','conn','edit','look'].forEach(s=>$('#'+s).style.display=s===n?'':'none');if(n==='edit')loadFiles();if(n==='conn')loadConns();setTimeout(enhanceAll,0);}
+function tab(n){try{localStorage.setItem('rr_tab',n)}catch(e){}document.querySelectorAll('.tab').forEach(e=>e.classList.toggle('on',e.dataset.t===n));['mon','conn','traf','edit','look'].forEach(s=>$('#'+s).style.display=s===n?'':'none');if(n==='edit')loadFiles();if(n==='conn')loadConns();if(n==='traf')loadTraffic();setTimeout(enhanceAll,0);}
 function cleanDomain(s){s=(s||'').trim().toLowerCase();s=s.replace(/^[a-z][a-z0-9+.-]*:\\/\\//,'');s=s.replace(/^[^/@]*@/,'');s=s.split('/')[0].split('?')[0].split('#')[0];s=s.replace(/:\\d+$/,'');s=s.replace(/^\\[|\\]$/g,'');return s.trim();}
 let _lastDomain='';
 async function mtest(){
@@ -709,7 +860,20 @@ async function renameDev(){
   await fetch('/api/device',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ip:_csrc,label})});
   toast('已重命名 '+_csrc);loadConns();
 }
-(function(){let t='mon';try{t=localStorage.getItem('rr_tab')||'mon'}catch(e){}if(['mon','conn','edit','look'].indexOf(t)<0)t='mon';tab(t);})();
+let _tgroup='domain';try{_tgroup=localStorage.getItem('rr_tgroup')||'domain'}catch(e){}
+function tgroup(g){_tgroup=g;try{localStorage.setItem('rr_tgroup',g)}catch(e){}loadTraffic();}
+async function loadTraffic(){
+  const sel=$('#tdate');const cur=sel.value;
+  const q='/api/traffic?group='+_tgroup+(cur?'&date='+encodeURIComponent(cur):'');
+  const d=await (await fetch(q)).json();
+  sel.innerHTML=(d.dates&&d.dates.length?d.dates:[d.date]).map(x=>'<option'+(x===d.date?' selected':'')+'>'+x+'</option>').join('');
+  if(cur&&d.dates&&d.dates.indexOf(cur)>=0)sel.value=cur;
+  $('#tgd').classList.toggle('on',_tgroup==='domain');$('#tgh').classList.toggle('on',_tgroup==='host');
+  $('#tt').innerHTML=(d.rows||[]).map(r=>'<tr><td class="host">'+esc(r.key)+'</td><td class=muted data-sort="'+r.up+'">'+hum(r.up)+'</td><td class=muted data-sort="'+r.down+'">'+hum(r.down)+'</td><td data-sort="'+r.total+'">'+hum(r.total)+'</td></tr>').join('')||'<tr><td colspan=4 class=muted>（暂无数据，采样器刚启动，等几分钟累计）</td></tr>';
+  $('#tmeta').textContent='共 '+(d.rows||[]).length+' 个域名 · 上行 '+hum(d.totalUp||0)+' · 下行 '+hum(d.totalDown||0);
+  enhanceAll();
+}
+(function(){let t='mon';try{t=localStorage.getItem('rr_tab')||'mon'}catch(e){}if(['mon','conn','traf','edit','look'].indexOf(t)<0)t='mon';tab(t);})();
 loadCand();setInterval(()=>{if($('#mon').style.display!=='none')loadCand();},15000);
 setInterval(()=>{if($('#conn').style.display!=='none'&&$('#cauto').checked)loadConns();},3000);
 </script></body></html>`;

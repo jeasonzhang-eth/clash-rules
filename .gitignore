@@ -1,2 +1,5 @@
 
 .DS_Store
+
+# rule-radar 运行时数据（候选/设备名/流量累计），不入库
+server/data/
