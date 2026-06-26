@@ -153,9 +153,10 @@ async function sampleTraffic() {
     }
     if (du <= 0 && dd <= 0) continue;
     const ipB = dayB[ip] || (dayB[ip] = {});
-    const e = ipB[host] || { up: 0, down: 0 };
+    const e = ipB[host] || { up: 0, down: 0, rule: "" };
     e.up += du;
     e.down += dd;
+    e.rule = c.rule + (c.rulePayload ? "(" + c.rulePayload + ")" : ""); // 实际命中的规则（取最近一次）
     ipB[host] = e;
     tdirty = true;
   }
@@ -222,15 +223,27 @@ function trafficRows(date, group, dev) {
   for (const ip in dayB) {
     if (dev && ip !== dev) continue;
     for (const h in dayB[ip]) {
+      const cell = dayB[ip][h];
       const k = group === "host" ? h : regdom(h);
-      const e = agg[k] || { up: 0, down: 0 };
-      e.up += dayB[ip][h].up;
-      e.down += dayB[ip][h].down;
+      const e = agg[k] || { up: 0, down: 0, rule: "", _max: -1 };
+      e.up += cell.up;
+      e.down += cell.down;
+      const ct = cell.up + cell.down; // 归并时取流量最大的成员的规则作代表
+      if (ct > e._max) {
+        e._max = ct;
+        e.rule = cell.rule || "";
+      }
       agg[k] = e;
     }
   }
   const rows = Object.entries(agg)
-    .map(([key, v]) => ({ key, up: v.up, down: v.down, total: v.up + v.down }))
+    .map(([key, v]) => ({
+      key,
+      rule: v.rule,
+      up: v.up,
+      down: v.down,
+      total: v.up + v.down,
+    }))
     .sort((a, b) => b.total - a.total);
   let tu = 0,
     td = 0;
@@ -805,7 +818,7 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
    <span class="muted" id="tmeta"></span></div>
   <div class="row" id="tsubs" style="gap:6px"></div>
   <div class="row"><span class="muted" style="font-size:12px">采样自连接累计字节（每 5s），断连/重连不归零；只统计被采到的连接，极短连接可能漏算。</span></div>
-  <table><thead><tr><th>域名</th><th>上行</th><th>下行</th><th>合计</th></tr></thead><tbody id="tt" data-tkey="traf"></tbody></table>
+  <table><thead><tr><th>域名</th><th>规则</th><th>上行</th><th>下行</th><th>合计</th></tr></thead><tbody id="tt" data-tkey="traf"></tbody></table>
  </section>
  <section id="edit" style="display:none">
   <div class="row"><select id="f" onchange="loadFile()"></select>
@@ -917,7 +930,7 @@ async function loadTraffic(){
   const allTotal=devs.reduce((s,x)=>s+x.total,0);
   const subs=[{ip:'',device:'全部',total:allTotal}].concat(devs);
   $('#tsubs').innerHTML=subs.map(s=>'<span class="sub'+(s.ip===_tdev?' on':'')+'" data-ip="'+s.ip+'" onclick="tdev(\\''+s.ip+'\\')">'+esc(s.device)+' <span class=pill>'+hum(s.total)+'</span></span>').join('');
-  $('#tt').innerHTML=(d.rows||[]).map(r=>'<tr><td class="host">'+esc(r.key)+'</td><td class=muted data-sort="'+r.up+'">'+hum(r.up)+'</td><td class=muted data-sort="'+r.down+'">'+hum(r.down)+'</td><td data-sort="'+r.total+'">'+hum(r.total)+'</td></tr>').join('')||'<tr><td colspan=4 class=muted>（暂无数据，采样器刚启动，等几分钟累计）</td></tr>';
+  $('#tt').innerHTML=(d.rows||[]).map(r=>'<tr><td class="host">'+esc(r.key)+'</td><td class=muted style="font-size:12px">'+esc(r.rule||'')+'</td><td class=muted data-sort="'+r.up+'">'+hum(r.up)+'</td><td class=muted data-sort="'+r.down+'">'+hum(r.down)+'</td><td data-sort="'+r.total+'">'+hum(r.total)+'</td></tr>').join('')||'<tr><td colspan=5 class=muted>（暂无数据，采样器刚启动，等几分钟累计）</td></tr>';
   $('#tmeta').textContent='共 '+(d.rows||[]).length+' 个域名 · 上行 '+hum(d.totalUp||0)+' · 下行 '+hum(d.totalDown||0);
   enhanceAll();
 }
