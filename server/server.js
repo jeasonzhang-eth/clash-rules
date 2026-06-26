@@ -563,7 +563,8 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <style>
   :root{color-scheme:dark}
   body{font:14px/1.5 -apple-system,system-ui,"PingFang SC",sans-serif;margin:0;background:#15171c;color:#e6e6e6}
-  header{padding:12px 18px;background:#1d2027;border-bottom:1px solid #2a2e37;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+  header{background:#1d2027;border-bottom:1px solid #2a2e37}
+  .hdr{max-width:1680px;margin:0 auto;padding:12px 28px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;box-sizing:border-box}
   h1{font-size:16px;margin:0}
   .tab{padding:6px 14px;border-radius:8px;cursor:pointer;background:#262a33;color:#bbb}
   .tab.on{background:#3a6df0;color:#fff}
@@ -588,7 +589,7 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
   #toast.show{opacity:1}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
 </style></head><body>
-<header>
+<header><div class="hdr">
   <h1>📡 规则雷达</h1>
   <span class="tab on" data-t="mon" onclick="tab('mon')">监测候选</span>
   <span class="tab" data-t="conn" onclick="tab('conn')">所有连接</span>
@@ -596,7 +597,7 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <span class="tab" data-t="look" onclick="tab('look')">查规则</span>
   <span class="muted" id="meta"></span>
   <button class="p" style="margin-left:auto" onclick="push()" title="把所有改动 commit 并推送到 GitHub">⬆ 推送 GitHub</button>
-</header>
+</div></header>
 <main>
  <section id="mon">
   <div class="row"><button onclick="loadCand()">刷新</button><button onclick="reset()">清空候选</button>
