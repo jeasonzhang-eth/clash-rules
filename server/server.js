@@ -369,7 +369,7 @@ async function refresh(name) {
     return 0;
   }
 }
-// 文件 → 控制器里的 provider 名（处理 AI Suite→OpenAI、Max→HBO Max 等别名）
+// 文件 → 控制器里的 provider 名（仅 appleai/Proxy 大小写别名，其余 == 文件 basename）
 function providerName(file) {
   for (const n in NAME2FILE) if (NAME2FILE[n] === file) return n;
   return path.basename(file, ".yaml");
@@ -556,10 +556,9 @@ function addDomain(file, domain, type) {
 }
 
 // ── 域名 → 命中哪个规则集 ──────────────────────────────────
-// 规则集 name(控制器里的 payload) 与文件名不一致的少数别名：
+// 规则集 name(控制器里的 payload) 与文件名不一致的少数别名（仅大小写差异）：
+// OpenAI→AI Suite、HBO Max→Max 已对齐成 provider 名 == 文件名，无需别名。
 const NAME2FILE = {
-  OpenAI: "Clash/Provider/AI Suite.yaml",
-  "HBO Max": "Clash/Provider/Media/Max.yaml",
   AppleAI: "Custom/appleai.yaml",
   PROXY: "Clash/Provider/Proxy.yaml",
 };

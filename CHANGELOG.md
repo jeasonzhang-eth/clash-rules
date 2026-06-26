@@ -2,6 +2,7 @@
 
 ## 2026-06-26
 
+- rule-radar：规则集 provider 名与文件名对齐——`NAME2FILE` 去掉 `OpenAI`(→AI Suite)、`HBO Max`(→Max) 两条别名（配合 `tools/sub-store/override.js` 把 provider 名改成 == 文件 basename）。流量统计/统计概览里不再出现「显示名找不到对应文件」的困惑，`fileOf`/`providerName` 直接按 basename 解析；仅保留 `AppleAI`/`PROXY` 两条纯大小写别名。
 - rule-radar：新增 `server/DESIGN.md` + `server/architecture.excalidraw`，说明运行原理与五条数据流（监测/采样/serve规则/改规则即时生效/查规则），含 3 定时器 + HTTP 服务结构。Excalidraw 为可编辑可视化图，Mermaid/文字为文本版。
 
 - rule-radar 流量统计/概览：在线连接每次采样都刷新规则与出口类别（即使本轮无新增流量），减少「未知」滞留；已断开的旧连接无法补分类，需清库才能彻底清零。
