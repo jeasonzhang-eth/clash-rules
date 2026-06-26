@@ -81,7 +81,7 @@ poll();
 const TRAFFIC =
   process.env.TRAFFIC || path.join(REPO, "server/data/traffic.json");
 const TSAMPLE = parseInt(process.env.TSAMPLE || "3", 10) * 1000; // 采样间隔
-const TKEEP = parseInt(process.env.TKEEP || "3", 10); // 保留天数（按北京日期）
+const TKEEP = parseInt(process.env.TKEEP || "15", 10); // 保留天数（按北京日期）
 const TZOFF = parseInt(process.env.TZOFF || "8", 10); // 时区偏移（北京 +8）
 let traffic = {};
 try {
@@ -158,12 +158,19 @@ async function sampleTraffic() {
     e.down += dd;
     // 记规则：有 rule 就记（取最近一次），不让某次空值清掉已记好的；
     // 从没采到 rule 时用出口链末端（实际出口组）兜底，避免列空白。
+    const ch = c.chains || [];
     if (c.rule) {
       e.rule = c.rule + (c.rulePayload ? "(" + c.rulePayload + ")" : "");
     } else if (!e.rule) {
-      const ch = c.chains || [];
       if (ch.length) e.rule = "→" + ch[ch.length - 1];
     }
+    // 记出口类别：chains[0] 是最内层实际出口（DIRECT / REJECT / 代理节点）
+    const out0 = ch[0] || "";
+    let dir = "";
+    if (out0 === "DIRECT") dir = "direct";
+    else if (/^REJECT/.test(out0)) dir = "reject";
+    else if (out0) dir = "proxy";
+    if (dir) e.dir = dir; // 不让空值清掉
     ipB[host] = e;
     tdirty = true;
   }
@@ -263,6 +270,67 @@ function trafficRows(date, group, dev) {
     dates: Object.keys(traffic).sort().reverse(),
     devices: devs,
     rows,
+    totalUp: tu,
+    totalDown: td,
+  };
+}
+// 概览：按出口类别（代理/直连/拦截/未知）和按规则聚合上下行
+function trafficSummary(date, dev) {
+  const dayB = traffic[date] || {};
+  const dhcp = dhcpMap();
+  const ov = deviceOverrides();
+  const devs = [];
+  for (const ip in dayB) {
+    let up = 0,
+      down = 0;
+    for (const h in dayB[ip]) {
+      up += dayB[ip][h].up;
+      down += dayB[ip][h].down;
+    }
+    devs.push({
+      ip,
+      device: labelFor(ip, dhcp, ov),
+      up,
+      down,
+      total: up + down,
+    });
+  }
+  devs.sort((a, b) => b.total - a.total);
+  const cat = {
+    proxy: { up: 0, down: 0 },
+    direct: { up: 0, down: 0 },
+    reject: { up: 0, down: 0 },
+    other: { up: 0, down: 0 },
+  };
+  const ruleMap = {};
+  let tu = 0,
+    td = 0;
+  for (const ip in dayB) {
+    if (dev && ip !== dev) continue;
+    for (const h in dayB[ip]) {
+      const c = dayB[ip][h];
+      const d = cat[c.dir] ? c.dir : "other";
+      cat[d].up += c.up;
+      cat[d].down += c.down;
+      const rk = c.rule || "(未知)";
+      const e = ruleMap[rk] || { rule: rk, dir: c.dir || "", up: 0, down: 0 };
+      e.up += c.up;
+      e.down += c.down;
+      if (c.dir) e.dir = c.dir;
+      ruleMap[rk] = e;
+      tu += c.up;
+      td += c.down;
+    }
+  }
+  const rules = Object.values(ruleMap)
+    .map((r) => ({ ...r, total: r.up + r.down }))
+    .sort((a, b) => b.total - a.total);
+  return {
+    date,
+    dates: Object.keys(traffic).sort().reverse(),
+    devices: devs,
+    cat,
+    rules,
     totalUp: tu,
     totalDown: td,
   };
@@ -728,6 +796,11 @@ const server = http.createServer(async (req, res) => {
     const dev = u.searchParams.get("dev") || "";
     return json(res, trafficRows(date, group, dev));
   }
+  if (p === "/api/summary") {
+    const date = u.searchParams.get("date") || dayKey();
+    const dev = u.searchParams.get("dev") || "";
+    return json(res, trafficSummary(date, dev));
+  }
   if (req.method === "POST" && p === "/api/device") {
     const b = await body(req);
     const ip = (b.ip || "").trim();
@@ -795,6 +868,7 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <span class="tab on" data-t="mon" onclick="tab('mon')">监测候选</span>
   <span class="tab" data-t="conn" onclick="tab('conn')">所有连接</span>
   <span class="tab" data-t="traf" onclick="tab('traf')">流量统计</span>
+  <span class="tab" data-t="stat" onclick="tab('stat')">统计概览</span>
   <span class="tab" data-t="edit" onclick="tab('edit')">改规则</span>
   <span class="tab" data-t="look" onclick="tab('look')">查规则</span>
   <span class="muted" id="meta"></span>
@@ -827,6 +901,15 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <div class="row"><span class="muted" style="font-size:12px">采样自连接累计字节（每 3s），断连/重连不归零；只统计被采到的连接，极短连接可能漏算。</span></div>
   <table><thead><tr><th>域名</th><th>规则</th><th>上行</th><th>下行</th><th>合计</th></tr></thead><tbody id="tt" data-tkey="traf"></tbody></table>
  </section>
+ <section id="stat" style="display:none">
+  <div class="row"><label class="muted"><input type="checkbox" id="sauto" checked> 自动刷新(3s)</label>
+   <label class="muted">日期 <select id="sdate" onchange="loadStat()"></select></label>
+   <span class="muted" id="smeta"></span></div>
+  <div class="row" id="ssubs" style="gap:6px"></div>
+  <div class="row" id="scards" style="gap:20px;font-size:14px;flex-wrap:wrap"></div>
+  <h3 style="margin:14px 0 0">按规则明细</h3>
+  <table><thead><tr><th>规则</th><th>类别</th><th>上行</th><th>下行</th><th>合计</th></tr></thead><tbody id="ts" data-tkey="stat"></tbody></table>
+ </section>
  <section id="edit" style="display:none">
   <div class="row"><select id="f" onchange="loadFile()"></select>
    <button class="p" onclick="save()">保存并应用（刷新该规则集）</button>
@@ -843,7 +926,7 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <script>
 const $=s=>document.querySelector(s);
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
-function tab(n){try{localStorage.setItem('rr_tab',n)}catch(e){}document.querySelectorAll('.tab').forEach(e=>e.classList.toggle('on',e.dataset.t===n));['mon','conn','traf','edit','look'].forEach(s=>$('#'+s).style.display=s===n?'':'none');if(n==='edit')loadFiles();if(n==='conn')loadConns();if(n==='traf')loadTraffic();setTimeout(enhanceAll,0);}
+function tab(n){try{localStorage.setItem('rr_tab',n)}catch(e){}document.querySelectorAll('.tab').forEach(e=>e.classList.toggle('on',e.dataset.t===n));['mon','conn','traf','stat','edit','look'].forEach(s=>$('#'+s).style.display=s===n?'':'none');if(n==='edit')loadFiles();if(n==='conn')loadConns();if(n==='traf')loadTraffic();if(n==='stat')loadStat();setTimeout(enhanceAll,0);}
 function cleanDomain(s){s=(s||'').trim().toLowerCase();s=s.replace(/^[a-z][a-z0-9+.-]*:\\/\\//,'');s=s.replace(/^[^/@]*@/,'');s=s.split('/')[0].split('?')[0].split('#')[0];s=s.replace(/:\\d+$/,'');s=s.replace(/^\\[|\\]$/g,'');return s.trim();}
 let _lastDomain='';
 async function mtest(){
@@ -924,7 +1007,7 @@ async function renameDev(){
 let _tgroup='domain';try{_tgroup=localStorage.getItem('rr_tgroup')||'domain'}catch(e){}
 let _tdev='';try{_tdev=localStorage.getItem('rr_tdev')||''}catch(e){}
 function tgroup(g){_tgroup=g;try{localStorage.setItem('rr_tgroup',g)}catch(e){}loadTraffic();}
-function tdev(ip){_tdev=ip;try{localStorage.setItem('rr_tdev',ip)}catch(e){}loadTraffic();}
+function tdev(ip){_tdev=ip;try{localStorage.setItem('rr_tdev',ip)}catch(e){}if($('#stat').style.display!=='none')loadStat();else loadTraffic();}
 async function loadTraffic(){
   const sel=$('#tdate');const cur=sel.value;
   const q='/api/traffic?group='+_tgroup+(cur?'&date='+encodeURIComponent(cur):'')+(_tdev?'&dev='+encodeURIComponent(_tdev):'');
@@ -941,8 +1024,28 @@ async function loadTraffic(){
   $('#tmeta').textContent='共 '+(d.rows||[]).length+' 个域名 · 上行 '+hum(d.totalUp||0)+' · 下行 '+hum(d.totalDown||0);
   enhanceAll();
 }
-(function(){let t='mon';try{t=localStorage.getItem('rr_tab')||'mon'}catch(e){}if(['mon','conn','traf','edit','look'].indexOf(t)<0)t='mon';tab(t);})();
+async function loadStat(){
+  const sel=$('#sdate');const cur=sel.value;
+  const q='/api/summary?'+(cur?'date='+encodeURIComponent(cur):'')+(_tdev?'&dev='+encodeURIComponent(_tdev):'');
+  const d=await (await fetch(q)).json();
+  sel.innerHTML=(d.dates&&d.dates.length?d.dates:[d.date]).map(x=>'<option'+(x===d.date?' selected':'')+'>'+x+'</option>').join('');
+  if(cur&&d.dates&&d.dates.indexOf(cur)>=0)sel.value=cur;
+  const devs=d.devices||[];
+  if(_tdev&&!devs.some(x=>x.ip===_tdev))_tdev='';
+  const allTotal=devs.reduce((s,x)=>s+x.total,0);
+  const subs=[{ip:'',device:'全部',total:allTotal}].concat(devs);
+  $('#ssubs').innerHTML=subs.map(s=>'<span class="sub'+(s.ip===_tdev?' on':'')+'" data-ip="'+s.ip+'" onclick="tdev(\\''+s.ip+'\\')">'+esc(s.device)+' <span class=pill>'+hum(s.total)+'</span></span>').join('');
+  const tot=((d.totalUp||0)+(d.totalDown||0))||1;const C=d.cat||{};
+  const card=(label,o)=>{o=o||{up:0,down:0};const t=o.up+o.down;return '<span><b>'+label+'</b> ↑'+hum(o.up)+' ↓'+hum(o.down)+' <span class=muted>('+(t*100/tot).toFixed(0)+'%)</span></span>';};
+  $('#scards').innerHTML=card('🌐 代理',C.proxy)+card('🇨🇳 直连',C.direct)+card('⛔ 拦截',C.reject)+((C.other&&(C.other.up+C.other.down))?card('· 未知',C.other):'');
+  const DL={proxy:'🌐 代理',direct:'直连',reject:'⛔ 拦截',other:'未知'};
+  $('#ts').innerHTML=(d.rules||[]).map(r=>'<tr><td class=host>'+esc(r.rule)+'</td><td class=muted>'+(DL[r.dir]||'未知')+'</td><td class=muted data-sort="'+r.up+'">'+hum(r.up)+'</td><td class=muted data-sort="'+r.down+'">'+hum(r.down)+'</td><td data-sort="'+r.total+'">'+hum(r.total)+'</td></tr>').join('')||'<tr><td colspan=5 class=muted>（暂无数据）</td></tr>';
+  $('#smeta').textContent='上行 '+hum(d.totalUp||0)+' · 下行 '+hum(d.totalDown||0)+' · 合计 '+hum((d.totalUp||0)+(d.totalDown||0));
+  enhanceAll();
+}
+(function(){let t='mon';try{t=localStorage.getItem('rr_tab')||'mon'}catch(e){}if(['mon','conn','traf','stat','edit','look'].indexOf(t)<0)t='mon';tab(t);})();
 loadCand();setInterval(()=>{if($('#mon').style.display!=='none')loadCand();},15000);
 setInterval(()=>{if($('#conn').style.display!=='none'&&$('#cauto').checked)loadConns();},3000);
 setInterval(()=>{if($('#traf').style.display!=='none'&&$('#tauto').checked)loadTraffic();},3000);
+setInterval(()=>{if($('#stat').style.display!=='none'&&$('#sauto').checked)loadStat();},3000);
 </script></body></html>`;
