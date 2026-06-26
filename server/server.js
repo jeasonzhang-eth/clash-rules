@@ -603,9 +603,9 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <div class="row"><button onclick="loadCand()">刷新</button><button onclick="reset()">清空候选</button>
    <span class="muted">「走直连的境外域名」点 <b>走代理</b> 即时加入 MyProxy；误拦的点 <b>放行</b>。</span></div>
   <h3>🌍 未覆盖·走了直连 <span class="pill" id="cu">0</span></h3>
-  <table><thead><tr><th>域名</th><th>次数</th><th>上行</th><th>下行</th><th>操作</th></tr></thead><tbody id="tu"></tbody></table>
+  <table><thead><tr><th>域名</th><th>次数</th><th>上行</th><th>下行</th><th>操作</th></tr></thead><tbody id="tu" data-tkey="cand-u"></tbody></table>
   <h3 style="margin-top:22px">⛔ 被 REJECT 拦截 <span class="pill" id="cb">0</span></h3>
-  <table><thead><tr><th>域名</th><th>次数</th><th>上行</th><th>下行</th><th>操作</th></tr></thead><tbody id="tb"></tbody></table>
+  <table><thead><tr><th>域名</th><th>次数</th><th>上行</th><th>下行</th><th>操作</th></tr></thead><tbody id="tb" data-tkey="cand-b"></tbody></table>
  </section>
  <section id="conn" style="display:none">
   <div class="row"><button onclick="loadConns()">刷新</button>
@@ -613,7 +613,7 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
    <button id="crename" style="display:none" onclick="renameDev()">✎ 重命名当前设备</button>
    <span class="muted" id="cmeta"></span></div>
   <div class="row" id="csubs" style="gap:6px"></div>
-  <table><thead><tr><th>设备</th><th>来源IP</th><th>目标域名</th><th>出口链</th><th>规则</th><th>上行</th><th>下行</th><th>操作</th></tr></thead><tbody id="tc"></tbody></table>
+  <table><thead><tr><th>设备</th><th>来源IP</th><th>目标域名</th><th>出口链</th><th>规则</th><th>上行</th><th>下行</th><th>操作</th></tr></thead><tbody id="tc" data-tkey="conn"></tbody></table>
  </section>
  <section id="edit" style="display:none">
   <div class="row"><select id="f" onchange="loadFile()"></select>
@@ -676,10 +676,13 @@ function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>'
 function cellVal(row,i){const c=row.cells[i];if(!c)return'';if(c.dataset.sort!==undefined)return parseFloat(c.dataset.sort)||0;const t=c.textContent.trim();const m=t.match(/^-?[\\d.]+/);return m&&t.length<20?parseFloat(m[0]):t.toLowerCase();}
 function applySort(t){const s=t._sort;if(!s||!t.tBodies[0])return;const tb=t.tBodies[0];const rows=[...tb.rows].filter(r=>r.cells.length>1);if(!rows.length)return;rows.sort((a,b)=>{let x=cellVal(a,s.col),y=cellVal(b,s.col);let r=(typeof x==='number'&&typeof y==='number')?x-y:String(x).localeCompare(String(y));return s.dir==='asc'?r:-r;});rows.forEach(r=>tb.appendChild(r));
   if(t.tHead)[...t.tHead.rows[0].cells].forEach((th,i)=>{const l=th.querySelector('.lbl');if(l)l.textContent=(th.dataset.base||'')+(i===s.col?(s.dir==='asc'?' ▲':' ▼'):'');});}
-function sortTable(t,i){const c=t._sort||{};t._sort={col:i,dir:(c.col===i&&c.dir==='asc')?'desc':'asc'};applySort(t);}
-function enhanceTable(t){const hr=t.tHead&&t.tHead.rows[0];if(!hr)return;const ws=[...hr.cells].map(th=>th.offsetWidth);t.style.tableLayout='fixed';t.style.width='100%';[...hr.cells].forEach((th,i)=>{th.style.width=ws[i]+'px';const base=th.textContent.trim();th.dataset.base=base;th.innerHTML='<span class="lbl">'+base+'</span><span class="rz"></span>';th.querySelector('.lbl').onclick=()=>sortTable(t,i);const rz=th.querySelector('.rz');rz.onmousedown=ev=>{ev.preventDefault();ev.stopPropagation();const sx=ev.pageX,sw=th.offsetWidth;const mv=e=>{th.style.width=Math.max(40,sw+e.pageX-sx)+'px';};const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);};document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);};});}
+function tkey(t){return t.tBodies[0]&&t.tBodies[0].dataset.tkey;}
+function loadSortMap(){try{return JSON.parse(localStorage.getItem('rr_sort')||'{}')}catch(e){return{}}}
+function saveSort(t){const k=tkey(t);if(!k)return;try{const m=loadSortMap();m[k]=t._sort;localStorage.setItem('rr_sort',JSON.stringify(m))}catch(e){}}
+function sortTable(t,i){const c=t._sort||{};t._sort={col:i,dir:(c.col===i&&c.dir==='asc')?'desc':'asc'};saveSort(t);applySort(t);}
+function enhanceTable(t){const hr=t.tHead&&t.tHead.rows[0];if(!hr)return;const k=tkey(t);if(k){const m=loadSortMap();if(m[k])t._sort=m[k];}const ws=[...hr.cells].map(th=>th.offsetWidth);t.style.tableLayout='fixed';t.style.width='100%';[...hr.cells].forEach((th,i)=>{th.style.width=ws[i]+'px';const base=th.textContent.trim();th.dataset.base=base;th.innerHTML='<span class="lbl">'+base+'</span><span class="rz"></span>';th.querySelector('.lbl').onclick=()=>sortTable(t,i);const rz=th.querySelector('.rz');rz.onmousedown=ev=>{ev.preventDefault();ev.stopPropagation();const sx=ev.pageX,sw=th.offsetWidth;const mv=e=>{th.style.width=Math.max(40,sw+e.pageX-sx)+'px';};const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);};document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);};});}
 function enhanceAll(){document.querySelectorAll('main table').forEach(t=>{if(!t.offsetWidth)return;if(!t._enh){enhanceTable(t);t._enh=1;}applySort(t);});}
-let _csrc='',_conns=[],_csources=[];
+let _csrc='',_conns=[],_csources=[];try{_csrc=localStorage.getItem('rr_csrc')||''}catch(e){}
 async function loadConns(){
   const d=await (await fetch('/api/connections')).json();
   _conns=d.conns||[];_csources=d.sources||[];
@@ -690,7 +693,7 @@ async function loadConns(){
   $('#cmeta').textContent='共 '+d.total+' 条连接 · '+_csources.length+' 个来源';
   renderConns();
 }
-function connSub(ip){_csrc=ip;document.querySelectorAll('#csubs .sub').forEach(e=>e.classList.toggle('on',e.dataset.ip===ip));$('#crename').style.display=ip?'':'none';renderConns();}
+function connSub(ip){_csrc=ip;try{localStorage.setItem('rr_csrc',ip)}catch(e){}document.querySelectorAll('#csubs .sub').forEach(e=>e.classList.toggle('on',e.dataset.ip===ip));$('#crename').style.display=ip?'':'none';renderConns();}
 function renderConns(){
   const rows=_conns.filter(c=>!_csrc||c.source===_csrc);
   $('#tc').innerHTML=rows.map(c=>'<tr><td>'+esc(c.device)+'</td><td class=muted>'+c.source+'</td><td class="host">'+esc(c.host)+'</td><td class=muted style="font-size:12px">'+esc(c.chain)+'</td><td class=muted style="font-size:12px">'+esc(c.rule)+'</td><td class=muted data-sort="'+c.up+'">'+hum(c.up)+'</td><td class=muted data-sort="'+c.down+'">'+hum(c.down)+'</td><td><button onclick="closeConn(\\''+c.id+'\\')">断开</button></td></tr>').join('')||'<tr><td colspan=8 class=muted>（无连接）</td></tr>';

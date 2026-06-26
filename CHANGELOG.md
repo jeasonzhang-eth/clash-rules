@@ -11,4 +11,5 @@
 - rule-radar 网页：所有表格支持**拖拽调整列宽**和**点表头排序**（数字/文本自动识别，↑↓ 指示方向），各 tab 通用。
 - rule-radar 网页：上/下行拆成「上行」「下行」两列，各自独立排序；排序按原始字节数（`data-sort`）而非显示文本，跨 B/K/M 单位也正确。
 - rule-radar 网页：顶部导航栏内容也居中（通栏背景 + 1680 居中列），与正文左右对齐。
+- rule-radar 网页：刷新后记住「所有连接」选中的设备（`rr_csrc`）和各表排序列/方向（`rr_sort`，按表 key 持久化到 localStorage），不再每次重置。
 - rule-radar 新增「所有连接」标签：实时列出全部连接，子标签按来源设备筛选；来源 IP 经 DHCP 租约表（`/tmp/dhcp.leases`）映射成设备名，可手动重命名（`server/data/devices.json`）；每条连接可单独断开。`docker-compose.yml` 增挂 `/tmp/dhcp.leases`。
