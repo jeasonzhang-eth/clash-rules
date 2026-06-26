@@ -60,5 +60,11 @@ payload:
   - DOMAIN-SUFFIX,dl.google.com
   - DOMAIN-SUFFIX,gvt2.com
   - DOMAIN-SUFFIX,gvt1.com
+  # —— 网页编辑追加（AI/开发工具/翻译）——
+  - DOMAIN-SUFFIX,bewild.ai
+  - DOMAIN-SUFFIX,antigravity-unleash.goog
+  - DOMAIN-SUFFIX,app.warp.dev
+  - DOMAIN-SUFFIX,api2.immersivetranslate.com
+  - DOMAIN-SUFFIX,ai.immersivetranslate.com
   # —— Tailscale 控制平面（协调/登录/密钥交换，纯信令，走代理保证可靠上线）——
   - DOMAIN,controlplane.tailscale.com
