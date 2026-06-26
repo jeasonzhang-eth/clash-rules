@@ -151,20 +151,21 @@ async function sampleTraffic() {
       du = up; // 新连接（含重连）必从 ~0 起，直接计当前累计值
       dd = down; // → 只出现一次的短连接也能抓到
     }
-    if (du <= 0 && dd <= 0) continue;
+    const existing = dayB[ip] && dayB[ip][host];
+    if (du <= 0 && dd <= 0 && !existing) continue; // 无流量且无历史 → 不建空条目
     const ipB = dayB[ip] || (dayB[ip] = {});
-    const e = ipB[host] || { up: 0, down: 0, rule: "" };
-    e.up += du;
-    e.down += dd;
-    // 记规则：有 rule 就记（取最近一次），不让某次空值清掉已记好的；
-    // 从没采到 rule 时用出口链末端（实际出口组）兜底，避免列空白。
+    const e = existing || { up: 0, down: 0, rule: "" };
+    if (du > 0) e.up += du;
+    if (dd > 0) e.down += dd;
+    // 规则/出口类别每次见到都刷新（即使本轮无增量），让在线连接持续修正“未知”。
+    // 有 rule 就记（取最近一次），不让某次空值清掉；从没采到 rule 时用出口链末端兜底。
     const ch = c.chains || [];
     if (c.rule) {
       e.rule = c.rule + (c.rulePayload ? "(" + c.rulePayload + ")" : "");
     } else if (!e.rule) {
       if (ch.length) e.rule = "→" + ch[ch.length - 1];
     }
-    // 记出口类别：chains[0] 是最内层实际出口（DIRECT / REJECT / 代理节点）
+    // chains[0] = 最内层实际出口（DIRECT / REJECT / 代理节点）
     const out0 = ch[0] || "";
     let dir = "";
     if (out0 === "DIRECT") dir = "direct";
