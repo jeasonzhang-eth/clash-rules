@@ -569,10 +569,15 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
   .tab.on{background:#3a6df0;color:#fff}
   .sub{padding:3px 10px;border-radius:14px;cursor:pointer;background:#262a33;color:#aeb6c2;font-size:12px}
   .sub.on{background:#3a6df0;color:#fff}
-  main{padding:16px 18px;max-width:1100px}
+  main{padding:16px 28px;max-width:1680px;width:100%;margin:0 auto;box-sizing:border-box}
   table{width:100%;border-collapse:collapse;margin-top:8px}
   th,td{text-align:left;padding:7px 10px;border-bottom:1px solid #262a33;font-size:13px}
-  th{color:#8b93a1;font-weight:600}
+  th{color:#8b93a1;font-weight:600;position:relative;overflow:hidden}
+  th .lbl{cursor:pointer;user-select:none;display:inline-block}
+  th .lbl:hover{color:#cfe}
+  th .rz{position:absolute;right:0;top:0;height:100%;width:7px;cursor:col-resize}
+  th .rz:hover{background:#3a6df0}
+  td{overflow:hidden;text-overflow:ellipsis}
   td.host{font-family:ui-monospace,Menlo,monospace;word-break:break-all}
   button{font:13px system-ui;border:0;border-radius:7px;padding:5px 11px;cursor:pointer;background:#262a33;color:#dfe3ea}
   button.p{background:#3a6df0;color:#fff}button.d{background:#3a8a55;color:#fff}button:hover{filter:brightness(1.15)}
@@ -625,7 +630,7 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <script>
 const $=s=>document.querySelector(s);
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
-function tab(n){try{localStorage.setItem('rr_tab',n)}catch(e){}document.querySelectorAll('.tab').forEach(e=>e.classList.toggle('on',e.dataset.t===n));['mon','conn','edit','look'].forEach(s=>$('#'+s).style.display=s===n?'':'none');if(n==='edit')loadFiles();if(n==='conn')loadConns();}
+function tab(n){try{localStorage.setItem('rr_tab',n)}catch(e){}document.querySelectorAll('.tab').forEach(e=>e.classList.toggle('on',e.dataset.t===n));['mon','conn','edit','look'].forEach(s=>$('#'+s).style.display=s===n?'':'none');if(n==='edit')loadFiles();if(n==='conn')loadConns();setTimeout(enhanceAll,0);}
 function cleanDomain(s){s=(s||'').trim().toLowerCase();s=s.replace(/^[a-z][a-z0-9+.-]*:\\/\\//,'');s=s.replace(/^[^/@]*@/,'');s=s.split('/')[0].split('?')[0].split('#')[0];s=s.replace(/:\\d+$/,'');s=s.replace(/^\\[|\\]$/g,'');return s.trim();}
 let _lastDomain='';
 async function mtest(){
@@ -642,6 +647,7 @@ async function mtest(){
   if(r.allSets&&r.allSets.length){h+='<h4>包含该域名的全部规则集（按规则顺序）</h4><table><thead><tr><th>规则集</th><th>出口组</th><th>匹配项</th></tr></thead><tbody>'+r.allSets.map(s=>'<tr><td>'+s.set+'</td><td>'+s.group+'</td><td class=muted>'+s.pattern+'</td></tr>').join('')+'</tbody></table>';}
   if(r.skippedIP)h+='<div class=muted style="margin-top:8px">注：GEOIP/IP-CIDR 类规则需解析 IP，未参与计算，结果以域名规则为准。</div>';
   $('#mres').innerHTML=h;
+  enhanceAll();
 }
 async function override(domain,target){
   const r=await (await fetch('/api/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain,target})})).json();
@@ -655,6 +661,7 @@ async function loadCand(){
   $('#tu').innerHTML=d.uncovered.map(r=>'<tr><td class="host">'+r.host+'</td><td>'+r.hits+'</td><td class="muted">'+hum(r.up)+' / '+hum(r.down)+'</td><td><button class="p" onclick="add(\\''+r.host+'\\',\\'proxy\\')">走代理</button> <button onclick="add(\\''+r.host+'\\',\\'direct\\')">直连</button> <button onclick="drop(\\''+r.host+'\\')">忽略</button></td></tr>').join('')||'<tr><td colspan=4 class=muted>（暂无）</td></tr>';
   $('#tb').innerHTML=d.blocked.map(r=>'<tr><td class="host">'+r.host+'</td><td>'+r.hits+'</td><td class="muted">'+hum(r.up)+' / '+hum(r.down)+'</td><td><button class="p" onclick="add(\\''+r.host+'\\',\\'proxy\\')">放行·代理</button> <button class="d" onclick="add(\\''+r.host+'\\',\\'direct\\')">放行·直连</button> <button onclick="drop(\\''+r.host+'\\')">忽略</button></td></tr>').join('')||'<tr><td colspan=4 class=muted>（暂无）</td></tr>';
   $('#meta').textContent='候选 '+(d.uncovered.length+d.blocked.length)+' 个 · 自动刷新';
+  enhanceAll();
 }
 async function add(host,target){const r=await (await fetch('/api/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain:host,target})})).json();toast((target==='direct'?'已直连 ':'已走代理 ')+host+'·断开 '+(r.closed||0)+' 连接'+(r.status>=200&&r.status<300?'（已生效）':'（刷新 '+r.status+'）'));loadCand();}
 async function drop(host){await fetch('/api/drop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({host})});loadCand();}
@@ -664,6 +671,13 @@ async function loadFiles(){const d=await (await fetch('/api/files')).json();cons
 async function loadFile(){const f=$('#f').value;const d=await (await fetch('/api/file?path='+encodeURIComponent(f))).json();$('#ta').value=d.content||'';$('#fstat').textContent='';}
 async function save(){const f=$('#f').value;const r=await (await fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:f,content:$('#ta').value})})).json();$('#fstat').textContent=r.ok?'已保存·刷新 '+r.refreshed+'('+r.status+')·断开 '+(r.closed||0)+' 连接，即时生效':'失败';toast('已保存 '+f);}
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+// ── 表格增强：列可拖宽 + 点表头排序（所有 tab 通用）──
+function cellVal(row,i){const c=row.cells[i];if(!c)return'';const t=c.textContent.trim();const m=t.match(/^-?[\\d.]+/);return m&&t.length<20?parseFloat(m[0]):t.toLowerCase();}
+function applySort(t){const s=t._sort;if(!s||!t.tBodies[0])return;const tb=t.tBodies[0];const rows=[...tb.rows].filter(r=>r.cells.length>1);if(!rows.length)return;rows.sort((a,b)=>{let x=cellVal(a,s.col),y=cellVal(b,s.col);let r=(typeof x==='number'&&typeof y==='number')?x-y:String(x).localeCompare(String(y));return s.dir==='asc'?r:-r;});rows.forEach(r=>tb.appendChild(r));
+  if(t.tHead)[...t.tHead.rows[0].cells].forEach((th,i)=>{const l=th.querySelector('.lbl');if(l)l.textContent=(th.dataset.base||'')+(i===s.col?(s.dir==='asc'?' ▲':' ▼'):'');});}
+function sortTable(t,i){const c=t._sort||{};t._sort={col:i,dir:(c.col===i&&c.dir==='asc')?'desc':'asc'};applySort(t);}
+function enhanceTable(t){const hr=t.tHead&&t.tHead.rows[0];if(!hr)return;const ws=[...hr.cells].map(th=>th.offsetWidth);t.style.tableLayout='fixed';t.style.width='100%';[...hr.cells].forEach((th,i)=>{th.style.width=ws[i]+'px';const base=th.textContent.trim();th.dataset.base=base;th.innerHTML='<span class="lbl">'+base+'</span><span class="rz"></span>';th.querySelector('.lbl').onclick=()=>sortTable(t,i);const rz=th.querySelector('.rz');rz.onmousedown=ev=>{ev.preventDefault();ev.stopPropagation();const sx=ev.pageX,sw=th.offsetWidth;const mv=e=>{th.style.width=Math.max(40,sw+e.pageX-sx)+'px';};const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);};document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);};});}
+function enhanceAll(){document.querySelectorAll('main table').forEach(t=>{if(!t.offsetWidth)return;if(!t._enh){enhanceTable(t);t._enh=1;}applySort(t);});}
 let _csrc='',_conns=[],_csources=[];
 async function loadConns(){
   const d=await (await fetch('/api/connections')).json();
@@ -679,6 +693,7 @@ function connSub(ip){_csrc=ip;document.querySelectorAll('#csubs .sub').forEach(e
 function renderConns(){
   const rows=_conns.filter(c=>!_csrc||c.source===_csrc);
   $('#tc').innerHTML=rows.map(c=>'<tr><td>'+esc(c.device)+'</td><td class=muted>'+c.source+'</td><td class="host">'+esc(c.host)+'</td><td class=muted style="font-size:12px">'+esc(c.chain)+'</td><td class=muted style="font-size:12px">'+esc(c.rule)+'</td><td class=muted>'+hum(c.up)+'/'+hum(c.down)+'</td><td><button onclick="closeConn(\\''+c.id+'\\')">断开</button></td></tr>').join('')||'<tr><td colspan=7 class=muted>（无连接）</td></tr>';
+  enhanceAll();
 }
 async function closeConn(id){await fetch('/api/close',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});loadConns();}
 async function renameDev(){
