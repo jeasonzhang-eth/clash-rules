@@ -696,10 +696,11 @@ async function loadConns(){
 function connSub(ip){_csrc=ip;try{localStorage.setItem('rr_csrc',ip)}catch(e){}document.querySelectorAll('#csubs .sub').forEach(e=>e.classList.toggle('on',e.dataset.ip===ip));$('#crename').style.display=ip?'':'none';renderConns();}
 function renderConns(){
   const rows=_conns.filter(c=>!_csrc||c.source===_csrc);
-  $('#tc').innerHTML=rows.map(c=>'<tr><td>'+esc(c.device)+'</td><td class=muted>'+c.source+'</td><td class="host">'+esc(c.host)+'</td><td class=muted style="font-size:12px">'+esc(c.chain)+'</td><td class=muted style="font-size:12px">'+esc(c.rule)+'</td><td class=muted data-sort="'+c.up+'">'+hum(c.up)+'</td><td class=muted data-sort="'+c.down+'">'+hum(c.down)+'</td><td><button onclick="closeConn(\\''+c.id+'\\')">断开</button></td></tr>').join('')||'<tr><td colspan=8 class=muted>（无连接）</td></tr>';
+  $('#tc').innerHTML=rows.map(c=>'<tr><td>'+esc(c.device)+'</td><td class=muted>'+c.source+'</td><td class="host">'+esc(c.host)+'</td><td class=muted style="font-size:12px">'+esc(c.chain)+'</td><td class=muted style="font-size:12px">'+esc(c.rule)+'</td><td class=muted data-sort="'+c.up+'">'+hum(c.up)+'</td><td class=muted data-sort="'+c.down+'">'+hum(c.down)+'</td><td>'+(/[a-z]/i.test(c.host)?'<button class="p" style="padding:4px 8px" onclick="routeConn(\\''+c.host+'\\',\\'proxy\\')">代理</button> <button class="d" style="padding:4px 8px" onclick="routeConn(\\''+c.host+'\\',\\'direct\\')">直连</button> ':'')+'<button onclick="closeConn(\\''+c.id+'\\')">断开</button></td></tr>').join('')||'<tr><td colspan=8 class=muted>（无连接）</td></tr>';
   enhanceAll();
 }
 async function closeConn(id){await fetch('/api/close',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});loadConns();}
+async function routeConn(host,target){const r=await (await fetch('/api/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain:host,target})})).json();toast((target==='direct'?'已直连 ':'已走代理 ')+host+'·断开 '+(r.closed||0)+' 连接');loadConns();}
 async function renameDev(){
   if(!_csrc)return;
   const cur=(_csources.find(s=>s.ip===_csrc)||{}).device||'';
