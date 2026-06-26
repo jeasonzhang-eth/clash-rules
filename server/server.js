@@ -145,6 +145,93 @@ async function closeConns(filterFn) {
     return 0;
   }
 }
+// 把用户输入清成纯域名：去协议头、去路径/查询、去端口、去 userinfo。
+// 例：https://chat.openai.com/foo?x=1 → chat.openai.com
+function cleanDomain(input) {
+  let s = (input || "").trim().toLowerCase();
+  s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//, ""); // 协议头
+  s = s.replace(/^[^/@]*@/, ""); // userinfo
+  s = s.split("/")[0].split("?")[0].split("#")[0]; // 路径/查询/锚点
+  s = s.replace(/:\d+$/, ""); // 端口
+  s = s.replace(/^\[|\]$/g, ""); // ipv6 方括号
+  return s.trim();
+}
+
+// ── 设备标签：来源 IP → 友好设备名 ────────────────────────────
+// 数据来源：DHCP 租约表（自动）+ devices.json（用户手动覆盖，优先级最高）
+const DHCP = process.env.DHCP || "/tmp/dhcp.leases";
+const DEVICES = path.join(REPO, "server/data/devices.json");
+function dhcpMap() {
+  const m = {};
+  try {
+    for (const ln of fs.readFileSync(DHCP, "utf8").split("\n")) {
+      const p = ln.split(/\s+/); // 过期 MAC IP 主机名 clientid
+      if (p.length >= 4 && p[2] && p[3] && p[3] !== "*") m[p[2]] = p[3];
+    }
+  } catch (e) {}
+  return m;
+}
+function deviceOverrides() {
+  try {
+    return JSON.parse(fs.readFileSync(DEVICES, "utf8"));
+  } catch (e) {
+    return {};
+  }
+}
+function saveDeviceOverride(ip, label) {
+  const o = deviceOverrides();
+  if (label) o[ip] = label;
+  else delete o[ip];
+  try {
+    fs.mkdirSync(path.dirname(DEVICES), { recursive: true });
+    fs.writeFileSync(DEVICES, JSON.stringify(o, null, 2));
+  } catch (e) {}
+}
+function labelFor(ip, dhcp, ov) {
+  return ov[ip] || dhcp[ip] || ip;
+}
+// 拉控制器实时连接，附上设备标签，按来源聚合。
+async function listConns() {
+  let data = { connections: [] };
+  try {
+    data = await (
+      await fetch(CTRL + "/connections", {
+        headers: { Authorization: "Bearer " + SECRET },
+      })
+    ).json();
+  } catch (e) {}
+  const dhcp = dhcpMap();
+  const ov = deviceOverrides();
+  const conns = [];
+  const srcAgg = {};
+  for (const c of data.connections || []) {
+    const m = c.metadata || {};
+    const ip = m.sourceIP || "";
+    const device = labelFor(ip, dhcp, ov);
+    conns.push({
+      id: c.id,
+      source: ip,
+      device,
+      host: m.host || m.sniffHost || m.destinationIP || "",
+      dest: m.destinationIP || "",
+      network: m.network || "",
+      chain: (c.chains || []).join(" › "),
+      rule: c.rule + (c.rulePayload ? "(" + c.rulePayload + ")" : ""),
+      up: c.upload || 0,
+      down: c.download || 0,
+      start: c.start || "",
+    });
+    if (ip) {
+      const a = srcAgg[ip] || { ip, device, count: 0 };
+      a.count += 1;
+      a.device = device;
+      srcAgg[ip] = a;
+    }
+  }
+  const sources = Object.values(srcAgg).sort((a, b) => b.count - a.count);
+  return { total: conns.length, sources, conns };
+}
+
 // 在仓库里跑 git。容器内用 OpenSSH + 原始 key 走 443，
 // 用 GIT_SSH_COMMAND 覆盖宿主机 .git/config 里 dropbear 专用的 core.sshCommand。
 function sh(args) {
@@ -253,7 +340,7 @@ function matchInFile(file, domain) {
   return null;
 }
 async function matchDomain(input) {
-  const domain = input.toLowerCase().trim();
+  const domain = cleanDomain(input);
   let rules = [];
   try {
     rules =
@@ -391,7 +478,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === "POST" && p === "/api/add") {
     const b = await body(req);
-    const domain = (b.domain || "").trim();
+    const domain = cleanDomain(b.domain || "");
     if (!domain) return json(res, { error: "no domain" }, 400);
     const target = b.target === "direct" ? "direct" : "proxy";
     const file = target === "direct" ? MYDIRECT : MYPROXY;
@@ -437,6 +524,27 @@ const server = http.createServer(async (req, res) => {
     const r = await gitPush();
     return json(res, r, r.ok ? 200 : 500);
   }
+  if (p === "/api/connections") {
+    return json(res, await listConns());
+  }
+  if (req.method === "POST" && p === "/api/device") {
+    const b = await body(req);
+    const ip = (b.ip || "").trim();
+    if (!ip) return json(res, { error: "no ip" }, 400);
+    saveDeviceOverride(ip, (b.label || "").trim());
+    return json(res, { ok: true });
+  }
+  if (req.method === "POST" && p === "/api/close") {
+    const b = await body(req);
+    if (!b.id) return json(res, { error: "no id" }, 400);
+    try {
+      await fetch(CTRL + "/connections/" + encodeURIComponent(b.id), {
+        method: "DELETE",
+        headers: { Authorization: "Bearer " + SECRET },
+      });
+    } catch (e) {}
+    return json(res, { ok: true });
+  }
   if (p === "/" || p === "/index.html") {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(PAGE);
@@ -459,6 +567,8 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
   h1{font-size:16px;margin:0}
   .tab{padding:6px 14px;border-radius:8px;cursor:pointer;background:#262a33;color:#bbb}
   .tab.on{background:#3a6df0;color:#fff}
+  .sub{padding:3px 10px;border-radius:14px;cursor:pointer;background:#262a33;color:#aeb6c2;font-size:12px}
+  .sub.on{background:#3a6df0;color:#fff}
   main{padding:16px 18px;max-width:1100px}
   table{width:100%;border-collapse:collapse;margin-top:8px}
   th,td{text-align:left;padding:7px 10px;border-bottom:1px solid #262a33;font-size:13px}
@@ -476,6 +586,7 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <header>
   <h1>📡 规则雷达</h1>
   <span class="tab on" data-t="mon" onclick="tab('mon')">监测候选</span>
+  <span class="tab" data-t="conn" onclick="tab('conn')">所有连接</span>
   <span class="tab" data-t="edit" onclick="tab('edit')">改规则</span>
   <span class="tab" data-t="look" onclick="tab('look')">查规则</span>
   <span class="muted" id="meta"></span>
@@ -489,6 +600,14 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <table><thead><tr><th>域名</th><th>次数</th><th>上/下行</th><th>操作</th></tr></thead><tbody id="tu"></tbody></table>
   <h3 style="margin-top:22px">⛔ 被 REJECT 拦截 <span class="pill" id="cb">0</span></h3>
   <table><thead><tr><th>域名</th><th>次数</th><th>上/下行</th><th>操作</th></tr></thead><tbody id="tb"></tbody></table>
+ </section>
+ <section id="conn" style="display:none">
+  <div class="row"><button onclick="loadConns()">刷新</button>
+   <label class="muted"><input type="checkbox" id="cauto" checked> 自动刷新(3s)</label>
+   <button id="crename" style="display:none" onclick="renameDev()">✎ 重命名当前设备</button>
+   <span class="muted" id="cmeta"></span></div>
+  <div class="row" id="csubs" style="gap:6px"></div>
+  <table><thead><tr><th>设备</th><th>来源IP</th><th>目标域名</th><th>出口链</th><th>规则</th><th>上/下</th><th>操作</th></tr></thead><tbody id="tc"></tbody></table>
  </section>
  <section id="edit" style="display:none">
   <div class="row"><select id="f" onchange="loadFile()"></select>
@@ -506,17 +625,28 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <script>
 const $=s=>document.querySelector(s);
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
-function tab(n){try{localStorage.setItem('rr_tab',n)}catch(e){}document.querySelectorAll('.tab').forEach(e=>e.classList.toggle('on',e.dataset.t===n));['mon','edit','look'].forEach(s=>$('#'+s).style.display=s===n?'':'none');if(n==='edit')loadFiles();}
+function tab(n){try{localStorage.setItem('rr_tab',n)}catch(e){}document.querySelectorAll('.tab').forEach(e=>e.classList.toggle('on',e.dataset.t===n));['mon','conn','edit','look'].forEach(s=>$('#'+s).style.display=s===n?'':'none');if(n==='edit')loadFiles();if(n==='conn')loadConns();}
+function cleanDomain(s){s=(s||'').trim().toLowerCase();s=s.replace(/^[a-z][a-z0-9+.-]*:\\/\\//,'');s=s.replace(/^[^/@]*@/,'');s=s.split('/')[0].split('?')[0].split('#')[0];s=s.replace(/:\\d+$/,'');s=s.replace(/^\\[|\\]$/g,'');return s.trim();}
+let _lastDomain='';
 async function mtest(){
-  const d=$('#dq').value.trim();if(!d)return;
+  const d=cleanDomain($('#dq').value);if(!d)return;
+  $('#dq').value=d;_lastDomain=d; // 把输入框也归一成纯域名
   $('#mres').innerHTML='查询中…';
   const r=await (await fetch('/api/match?domain='+encodeURIComponent(d))).json();
-  let h='';
+  let h='<div class="row" style="margin:10px 0"><b>'+d+'</b>'
+    +'<button class="p" onclick="override(\\''+d+'\\',\\'proxy\\')">强制走代理</button>'
+    +'<button class="d" onclick="override(\\''+d+'\\',\\'direct\\')">强制直连</button>'
+    +'<span class="muted">写入个人规则(最高优先级)，覆盖现有规则并即时生效</span></div>';
   if(r.effective){const e=r.effective;h+='<div style="font-size:15px;margin:10px 0"><b>最终命中</b>：'+(e.kind==='ruleset'?'规则集 <code>'+e.set+'</code>':e.set)+' → 出口组 <b>'+e.group+'</b><br><span class=muted>匹配规则 '+e.pattern+(e.file?'（'+e.file+'）':'')+'</span></div>';}
   else h+='<div class=muted style="margin:10px 0">没有任何域名规则命中（可能走 GEOIP/IP 规则或 MATCH 兜底）。</div>';
   if(r.allSets&&r.allSets.length){h+='<h4>包含该域名的全部规则集（按规则顺序）</h4><table><thead><tr><th>规则集</th><th>出口组</th><th>匹配项</th></tr></thead><tbody>'+r.allSets.map(s=>'<tr><td>'+s.set+'</td><td>'+s.group+'</td><td class=muted>'+s.pattern+'</td></tr>').join('')+'</tbody></table>';}
   if(r.skippedIP)h+='<div class=muted style="margin-top:8px">注：GEOIP/IP-CIDR 类规则需解析 IP，未参与计算，结果以域名规则为准。</div>';
   $('#mres').innerHTML=h;
+}
+async function override(domain,target){
+  const r=await (await fetch('/api/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain,target})})).json();
+  toast((target==='direct'?'已强制直连 ':'已强制走代理 ')+domain+'·断开 '+(r.closed||0)+' 连接');
+  mtest(); // 重新查询，确认规则已变
 }
 function hum(n){return n>1048576?(n/1048576).toFixed(1)+'M':n>1024?(n/1024).toFixed(1)+'K':n+'B';}
 async function loadCand(){
@@ -533,6 +663,33 @@ async function push(){toast('推送中…');try{const r=await (await fetch('/api
 async function loadFiles(){const d=await (await fetch('/api/files')).json();const sel=$('#f');if(sel.dataset.done)return;sel.innerHTML=d.files.map(f=>'<option>'+f+'</option>').join('');sel.dataset.done=1;loadFile();}
 async function loadFile(){const f=$('#f').value;const d=await (await fetch('/api/file?path='+encodeURIComponent(f))).json();$('#ta').value=d.content||'';$('#fstat').textContent='';}
 async function save(){const f=$('#f').value;const r=await (await fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:f,content:$('#ta').value})})).json();$('#fstat').textContent=r.ok?'已保存·刷新 '+r.refreshed+'('+r.status+')·断开 '+(r.closed||0)+' 连接，即时生效':'失败';toast('已保存 '+f);}
-(function(){let t='mon';try{t=localStorage.getItem('rr_tab')||'mon'}catch(e){}if(['mon','edit','look'].indexOf(t)<0)t='mon';tab(t);})();
+function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+let _csrc='',_conns=[],_csources=[];
+async function loadConns(){
+  const d=await (await fetch('/api/connections')).json();
+  _conns=d.conns||[];_csources=d.sources||[];
+  if(_csrc&&!_csources.some(s=>s.ip===_csrc))_csrc=''; // 来源消失则回到全部
+  const subs=[{ip:'',device:'全部',count:d.total}].concat(_csources);
+  $('#csubs').innerHTML=subs.map(s=>'<span class="sub'+(s.ip===_csrc?' on':'')+'" data-ip="'+s.ip+'" onclick="connSub(\\''+s.ip+'\\')">'+esc(s.device)+' <span class=pill>'+s.count+'</span></span>').join('');
+  $('#crename').style.display=_csrc?'':'none';
+  $('#cmeta').textContent='共 '+d.total+' 条连接 · '+_csources.length+' 个来源';
+  renderConns();
+}
+function connSub(ip){_csrc=ip;document.querySelectorAll('#csubs .sub').forEach(e=>e.classList.toggle('on',e.dataset.ip===ip));$('#crename').style.display=ip?'':'none';renderConns();}
+function renderConns(){
+  const rows=_conns.filter(c=>!_csrc||c.source===_csrc);
+  $('#tc').innerHTML=rows.map(c=>'<tr><td>'+esc(c.device)+'</td><td class=muted>'+c.source+'</td><td class="host">'+esc(c.host)+'</td><td class=muted style="font-size:12px">'+esc(c.chain)+'</td><td class=muted style="font-size:12px">'+esc(c.rule)+'</td><td class=muted>'+hum(c.up)+'/'+hum(c.down)+'</td><td><button onclick="closeConn(\\''+c.id+'\\')">断开</button></td></tr>').join('')||'<tr><td colspan=7 class=muted>（无连接）</td></tr>';
+}
+async function closeConn(id){await fetch('/api/close',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});loadConns();}
+async function renameDev(){
+  if(!_csrc)return;
+  const cur=(_csources.find(s=>s.ip===_csrc)||{}).device||'';
+  const label=prompt('给来源 '+_csrc+' 设置设备名（留空清除）：',cur===_csrc?'':cur);
+  if(label===null)return;
+  await fetch('/api/device',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ip:_csrc,label})});
+  toast('已重命名 '+_csrc);loadConns();
+}
+(function(){let t='mon';try{t=localStorage.getItem('rr_tab')||'mon'}catch(e){}if(['mon','conn','edit','look'].indexOf(t)<0)t='mon';tab(t);})();
 loadCand();setInterval(()=>{if($('#mon').style.display!=='none')loadCand();},15000);
+setInterval(()=>{if($('#conn').style.display!=='none'&&$('#cauto').checked)loadConns();},3000);
 </script></body></html>`;

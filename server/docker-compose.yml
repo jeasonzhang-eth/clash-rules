@@ -16,4 +16,5 @@ services:
     volumes:
       - ../:/repo # 挂整个 clash-rules 仓（serve + 编辑都在这里）
       - /root/.ssh:/root/.ssh:ro # 复用宿主机 GitHub key，供网页「推送」按钮 git push（容器内 OpenSSH 直接用原始 key）
+      - /tmp/dhcp.leases:/tmp/dhcp.leases:ro # DHCP 租约表，「所有连接」用它把来源 IP 映射成设备名
     command: node /repo/server/server.js
