@@ -811,7 +811,7 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <table><thead><tr><th>设备</th><th>来源IP</th><th>目标域名</th><th>出口链</th><th>规则</th><th>上行</th><th>下行</th><th>操作</th></tr></thead><tbody id="tc" data-tkey="conn"></tbody></table>
  </section>
  <section id="traf" style="display:none">
-  <div class="row"><button onclick="loadTraffic()">刷新</button>
+  <div class="row"><label class="muted"><input type="checkbox" id="tauto" checked> 自动刷新(5s)</label>
    <label class="muted">日期 <select id="tdate" onchange="loadTraffic()"></select></label>
    <span class="sub on" id="tgd" onclick="tgroup('domain')">主域名</span>
    <span class="sub" id="tgh" onclick="tgroup('host')">完整主机</span>
@@ -937,4 +937,5 @@ async function loadTraffic(){
 (function(){let t='mon';try{t=localStorage.getItem('rr_tab')||'mon'}catch(e){}if(['mon','conn','traf','edit','look'].indexOf(t)<0)t='mon';tab(t);})();
 loadCand();setInterval(()=>{if($('#mon').style.display!=='none')loadCand();},15000);
 setInterval(()=>{if($('#conn').style.display!=='none'&&$('#cauto').checked)loadConns();},3000);
+setInterval(()=>{if($('#traf').style.display!=='none'&&$('#tauto').checked)loadTraffic();},5000);
 </script></body></html>`;
