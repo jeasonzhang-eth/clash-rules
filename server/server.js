@@ -156,7 +156,14 @@ async function sampleTraffic() {
     const e = ipB[host] || { up: 0, down: 0, rule: "" };
     e.up += du;
     e.down += dd;
-    e.rule = c.rule + (c.rulePayload ? "(" + c.rulePayload + ")" : ""); // 实际命中的规则（取最近一次）
+    // 记规则：有 rule 就记（取最近一次），不让某次空值清掉已记好的；
+    // 从没采到 rule 时用出口链末端（实际出口组）兜底，避免列空白。
+    if (c.rule) {
+      e.rule = c.rule + (c.rulePayload ? "(" + c.rulePayload + ")" : "");
+    } else if (!e.rule) {
+      const ch = c.chains || [];
+      if (ch.length) e.rule = "→" + ch[ch.length - 1];
+    }
     ipB[host] = e;
     tdirty = true;
   }
