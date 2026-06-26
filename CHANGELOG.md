@@ -9,4 +9,5 @@
 - 规则：Tailscale `controlplane.tailscale.com`、`login.tailscale.com` 走代理（MyProxy，控制平面/登录纯信令需稳定上线）；`derp*.tailscale.com` 中继走直连（MyDirect，DOMAIN-REGEX，避免套代理绕路）。
 - rule-radar 网页：内容区居中并加宽（max-width 1680，左右留白），不再挤在左侧。
 - rule-radar 网页：所有表格支持**拖拽调整列宽**和**点表头排序**（数字/文本自动识别，↑↓ 指示方向），各 tab 通用。
+- rule-radar 网页：上/下行拆成「上行」「下行」两列，各自独立排序；排序按原始字节数（`data-sort`）而非显示文本，跨 B/K/M 单位也正确。
 - rule-radar 新增「所有连接」标签：实时列出全部连接，子标签按来源设备筛选；来源 IP 经 DHCP 租约表（`/tmp/dhcp.leases`）映射成设备名，可手动重命名（`server/data/devices.json`）；每条连接可单独断开。`docker-compose.yml` 增挂 `/tmp/dhcp.leases`。

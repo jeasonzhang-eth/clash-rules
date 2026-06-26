@@ -602,9 +602,9 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <div class="row"><button onclick="loadCand()">刷新</button><button onclick="reset()">清空候选</button>
    <span class="muted">「走直连的境外域名」点 <b>走代理</b> 即时加入 MyProxy；误拦的点 <b>放行</b>。</span></div>
   <h3>🌍 未覆盖·走了直连 <span class="pill" id="cu">0</span></h3>
-  <table><thead><tr><th>域名</th><th>次数</th><th>上/下行</th><th>操作</th></tr></thead><tbody id="tu"></tbody></table>
+  <table><thead><tr><th>域名</th><th>次数</th><th>上行</th><th>下行</th><th>操作</th></tr></thead><tbody id="tu"></tbody></table>
   <h3 style="margin-top:22px">⛔ 被 REJECT 拦截 <span class="pill" id="cb">0</span></h3>
-  <table><thead><tr><th>域名</th><th>次数</th><th>上/下行</th><th>操作</th></tr></thead><tbody id="tb"></tbody></table>
+  <table><thead><tr><th>域名</th><th>次数</th><th>上行</th><th>下行</th><th>操作</th></tr></thead><tbody id="tb"></tbody></table>
  </section>
  <section id="conn" style="display:none">
   <div class="row"><button onclick="loadConns()">刷新</button>
@@ -612,7 +612,7 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
    <button id="crename" style="display:none" onclick="renameDev()">✎ 重命名当前设备</button>
    <span class="muted" id="cmeta"></span></div>
   <div class="row" id="csubs" style="gap:6px"></div>
-  <table><thead><tr><th>设备</th><th>来源IP</th><th>目标域名</th><th>出口链</th><th>规则</th><th>上/下</th><th>操作</th></tr></thead><tbody id="tc"></tbody></table>
+  <table><thead><tr><th>设备</th><th>来源IP</th><th>目标域名</th><th>出口链</th><th>规则</th><th>上行</th><th>下行</th><th>操作</th></tr></thead><tbody id="tc"></tbody></table>
  </section>
  <section id="edit" style="display:none">
   <div class="row"><select id="f" onchange="loadFile()"></select>
@@ -658,8 +658,8 @@ function hum(n){return n>1048576?(n/1048576).toFixed(1)+'M':n>1024?(n/1024).toFi
 async function loadCand(){
   const d=await (await fetch('/api/candidates')).json();
   $('#cu').textContent=d.uncovered.length;$('#cb').textContent=d.blocked.length;
-  $('#tu').innerHTML=d.uncovered.map(r=>'<tr><td class="host">'+r.host+'</td><td>'+r.hits+'</td><td class="muted">'+hum(r.up)+' / '+hum(r.down)+'</td><td><button class="p" onclick="add(\\''+r.host+'\\',\\'proxy\\')">走代理</button> <button onclick="add(\\''+r.host+'\\',\\'direct\\')">直连</button> <button onclick="drop(\\''+r.host+'\\')">忽略</button></td></tr>').join('')||'<tr><td colspan=4 class=muted>（暂无）</td></tr>';
-  $('#tb').innerHTML=d.blocked.map(r=>'<tr><td class="host">'+r.host+'</td><td>'+r.hits+'</td><td class="muted">'+hum(r.up)+' / '+hum(r.down)+'</td><td><button class="p" onclick="add(\\''+r.host+'\\',\\'proxy\\')">放行·代理</button> <button class="d" onclick="add(\\''+r.host+'\\',\\'direct\\')">放行·直连</button> <button onclick="drop(\\''+r.host+'\\')">忽略</button></td></tr>').join('')||'<tr><td colspan=4 class=muted>（暂无）</td></tr>';
+  $('#tu').innerHTML=d.uncovered.map(r=>'<tr><td class="host">'+r.host+'</td><td>'+r.hits+'</td><td class="muted" data-sort="'+r.up+'">'+hum(r.up)+'</td><td class="muted" data-sort="'+r.down+'">'+hum(r.down)+'</td><td><button class="p" onclick="add(\\''+r.host+'\\',\\'proxy\\')">走代理</button> <button onclick="add(\\''+r.host+'\\',\\'direct\\')">直连</button> <button onclick="drop(\\''+r.host+'\\')">忽略</button></td></tr>').join('')||'<tr><td colspan=5 class=muted>（暂无）</td></tr>';
+  $('#tb').innerHTML=d.blocked.map(r=>'<tr><td class="host">'+r.host+'</td><td>'+r.hits+'</td><td class="muted" data-sort="'+r.up+'">'+hum(r.up)+'</td><td class="muted" data-sort="'+r.down+'">'+hum(r.down)+'</td><td><button class="p" onclick="add(\\''+r.host+'\\',\\'proxy\\')">放行·代理</button> <button class="d" onclick="add(\\''+r.host+'\\',\\'direct\\')">放行·直连</button> <button onclick="drop(\\''+r.host+'\\')">忽略</button></td></tr>').join('')||'<tr><td colspan=5 class=muted>（暂无）</td></tr>';
   $('#meta').textContent='候选 '+(d.uncovered.length+d.blocked.length)+' 个 · 自动刷新';
   enhanceAll();
 }
@@ -672,7 +672,7 @@ async function loadFile(){const f=$('#f').value;const d=await (await fetch('/api
 async function save(){const f=$('#f').value;const r=await (await fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:f,content:$('#ta').value})})).json();$('#fstat').textContent=r.ok?'已保存·刷新 '+r.refreshed+'('+r.status+')·断开 '+(r.closed||0)+' 连接，即时生效':'失败';toast('已保存 '+f);}
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 // ── 表格增强：列可拖宽 + 点表头排序（所有 tab 通用）──
-function cellVal(row,i){const c=row.cells[i];if(!c)return'';const t=c.textContent.trim();const m=t.match(/^-?[\\d.]+/);return m&&t.length<20?parseFloat(m[0]):t.toLowerCase();}
+function cellVal(row,i){const c=row.cells[i];if(!c)return'';if(c.dataset.sort!==undefined)return parseFloat(c.dataset.sort)||0;const t=c.textContent.trim();const m=t.match(/^-?[\\d.]+/);return m&&t.length<20?parseFloat(m[0]):t.toLowerCase();}
 function applySort(t){const s=t._sort;if(!s||!t.tBodies[0])return;const tb=t.tBodies[0];const rows=[...tb.rows].filter(r=>r.cells.length>1);if(!rows.length)return;rows.sort((a,b)=>{let x=cellVal(a,s.col),y=cellVal(b,s.col);let r=(typeof x==='number'&&typeof y==='number')?x-y:String(x).localeCompare(String(y));return s.dir==='asc'?r:-r;});rows.forEach(r=>tb.appendChild(r));
   if(t.tHead)[...t.tHead.rows[0].cells].forEach((th,i)=>{const l=th.querySelector('.lbl');if(l)l.textContent=(th.dataset.base||'')+(i===s.col?(s.dir==='asc'?' ▲':' ▼'):'');});}
 function sortTable(t,i){const c=t._sort||{};t._sort={col:i,dir:(c.col===i&&c.dir==='asc')?'desc':'asc'};applySort(t);}
@@ -692,7 +692,7 @@ async function loadConns(){
 function connSub(ip){_csrc=ip;document.querySelectorAll('#csubs .sub').forEach(e=>e.classList.toggle('on',e.dataset.ip===ip));$('#crename').style.display=ip?'':'none';renderConns();}
 function renderConns(){
   const rows=_conns.filter(c=>!_csrc||c.source===_csrc);
-  $('#tc').innerHTML=rows.map(c=>'<tr><td>'+esc(c.device)+'</td><td class=muted>'+c.source+'</td><td class="host">'+esc(c.host)+'</td><td class=muted style="font-size:12px">'+esc(c.chain)+'</td><td class=muted style="font-size:12px">'+esc(c.rule)+'</td><td class=muted>'+hum(c.up)+'/'+hum(c.down)+'</td><td><button onclick="closeConn(\\''+c.id+'\\')">断开</button></td></tr>').join('')||'<tr><td colspan=7 class=muted>（无连接）</td></tr>';
+  $('#tc').innerHTML=rows.map(c=>'<tr><td>'+esc(c.device)+'</td><td class=muted>'+c.source+'</td><td class="host">'+esc(c.host)+'</td><td class=muted style="font-size:12px">'+esc(c.chain)+'</td><td class=muted style="font-size:12px">'+esc(c.rule)+'</td><td class=muted data-sort="'+c.up+'">'+hum(c.up)+'</td><td class=muted data-sort="'+c.down+'">'+hum(c.down)+'</td><td><button onclick="closeConn(\\''+c.id+'\\')">断开</button></td></tr>').join('')||'<tr><td colspan=8 class=muted>（无连接）</td></tr>';
   enhanceAll();
 }
 async function closeConn(id){await fetch('/api/close',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});loadConns();}
