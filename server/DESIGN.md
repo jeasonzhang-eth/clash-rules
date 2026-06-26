@@ -1,5 +1,7 @@
 # rule-radar 运行原理与数据流
 
+> 📐 可视化图见同目录 `architecture.excalidraw`（用 Excalidraw / Obsidian Excalidraw 插件打开、可编辑）。下文 Mermaid 图与文字为同一内容的文本版。
+
 > 单进程纯 Node 服务（`server.js`，无依赖），跑在网关 iStoreOS 的 docker 容器里（host 网络，`:3003`）。
 > 把整个 `clash-rules` 仓挂进容器 `/repo`。核心 = **3 个定时器 + 1 个 HTTP 服务**，全部围着 mihomo 控制器（`:9090`）转。
 

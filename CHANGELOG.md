@@ -2,7 +2,7 @@
 
 ## 2026-06-26
 
-- rule-radar：新增 `server/DESIGN.md`，用 Mermaid 图说明运行原理与五条数据流（监测/采样/serve规则/改规则即时生效/查规则），含 3 定时器 + HTTP 服务结构。
+- rule-radar：新增 `server/DESIGN.md` + `server/architecture.excalidraw`，说明运行原理与五条数据流（监测/采样/serve规则/改规则即时生效/查规则），含 3 定时器 + HTTP 服务结构。Excalidraw 为可编辑可视化图，Mermaid/文字为文本版。
 
 - rule-radar 流量统计/概览：在线连接每次采样都刷新规则与出口类别（即使本轮无新增流量），减少「未知」滞留；已断开的旧连接无法补分类，需清库才能彻底清零。
 - rule-radar 新增「统计概览」标签：按出口类别（代理/直连/拦截）汇总上下行及占比，并按规则明细列出各规则的上下行/合计；可选日期、按设备筛选（与流量统计共享设备选择）、自动刷新 3s。采样时按连接出口链 `chains[0]`（DIRECT/REJECT/代理节点）记录类别。新增 `GET /api/summary`。
