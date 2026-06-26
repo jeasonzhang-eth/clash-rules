@@ -115,11 +115,14 @@ async function sampleTraffic() {
     return;
   }
   const day = dayKey();
-  const bucket = traffic[day] || (traffic[day] = {});
+  // 结构：traffic[日期][来源IP][域名] = {up,down}。存 IP 不存设备名，
+  // 查询时再解析 → 改设备名能实时反映在历史里。
+  const dayB = traffic[day] || (traffic[day] = {});
   const cur = {};
   for (const c of data.connections || []) {
     const m = c.metadata || {};
     const host = (m.host || m.sniffHost || m.destinationIP || "").trim();
+    const ip = m.sourceIP || "?";
     const up = c.upload || 0,
       down = c.download || 0;
     cur[c.id] = { up, down };
@@ -136,10 +139,11 @@ async function sampleTraffic() {
       dd = down; // → 只出现一次的短连接也能抓到
     }
     if (du <= 0 && dd <= 0) continue;
-    const e = bucket[host] || { up: 0, down: 0 };
+    const ipB = dayB[ip] || (dayB[ip] = {});
+    const e = ipB[host] || { up: 0, down: 0 };
     e.up += du;
     e.down += dd;
-    bucket[host] = e;
+    ipB[host] = e;
     tdirty = true;
   }
   tprev = cur; // 断开的连接自动从基线表消失
@@ -178,16 +182,37 @@ function regdom(h) {
   if (MULTI_SUFFIX.has(last2)) return p.slice(-3).join(".");
   return last2;
 }
-function trafficRows(date, group) {
-  const bucket = traffic[date] || {};
-  let agg = bucket;
-  if (group === "domain") {
-    agg = {};
-    for (const h in bucket) {
-      const k = regdom(h);
+function trafficRows(date, group, dev) {
+  const dayB = traffic[date] || {}; // {ip: {host: {up,down}}}
+  const dhcp = dhcpMap();
+  const ov = deviceOverrides();
+  // 设备子标签：按 IP 聚合该日总量（不受 dev 过滤影响，始终列全部设备）
+  const devs = [];
+  for (const ip in dayB) {
+    let up = 0,
+      down = 0;
+    for (const h in dayB[ip]) {
+      up += dayB[ip][h].up;
+      down += dayB[ip][h].down;
+    }
+    devs.push({
+      ip,
+      device: labelFor(ip, dhcp, ov),
+      up,
+      down,
+      total: up + down,
+    });
+  }
+  devs.sort((a, b) => b.total - a.total);
+  // 按域名聚合（可选过滤到某设备 IP）
+  const agg = {};
+  for (const ip in dayB) {
+    if (dev && ip !== dev) continue;
+    for (const h in dayB[ip]) {
+      const k = group === "host" ? h : regdom(h);
       const e = agg[k] || { up: 0, down: 0 };
-      e.up += bucket[h].up;
-      e.down += bucket[h].down;
+      e.up += dayB[ip][h].up;
+      e.down += dayB[ip][h].down;
       agg[k] = e;
     }
   }
@@ -203,6 +228,7 @@ function trafficRows(date, group) {
   return {
     date,
     dates: Object.keys(traffic).sort().reverse(),
+    devices: devs,
     rows,
     totalUp: tu,
     totalDown: td,
@@ -666,7 +692,8 @@ const server = http.createServer(async (req, res) => {
   if (p === "/api/traffic") {
     const date = u.searchParams.get("date") || dayKey();
     const group = u.searchParams.get("group") === "host" ? "host" : "domain";
-    return json(res, trafficRows(date, group));
+    const dev = u.searchParams.get("dev") || "";
+    return json(res, trafficRows(date, group, dev));
   }
   if (req.method === "POST" && p === "/api/device") {
     const b = await body(req);
@@ -763,6 +790,7 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
    <span class="sub on" id="tgd" onclick="tgroup('domain')">主域名</span>
    <span class="sub" id="tgh" onclick="tgroup('host')">完整主机</span>
    <span class="muted" id="tmeta"></span></div>
+  <div class="row" id="tsubs" style="gap:6px"></div>
   <div class="row"><span class="muted" style="font-size:12px">采样自连接累计字节（每 5s），断连/重连不归零；只统计被采到的连接，极短连接可能漏算。</span></div>
   <table><thead><tr><th>域名</th><th>上行</th><th>下行</th><th>合计</th></tr></thead><tbody id="tt" data-tkey="traf"></tbody></table>
  </section>
@@ -861,14 +889,21 @@ async function renameDev(){
   toast('已重命名 '+_csrc);loadConns();
 }
 let _tgroup='domain';try{_tgroup=localStorage.getItem('rr_tgroup')||'domain'}catch(e){}
+let _tdev='';try{_tdev=localStorage.getItem('rr_tdev')||''}catch(e){}
 function tgroup(g){_tgroup=g;try{localStorage.setItem('rr_tgroup',g)}catch(e){}loadTraffic();}
+function tdev(ip){_tdev=ip;try{localStorage.setItem('rr_tdev',ip)}catch(e){}loadTraffic();}
 async function loadTraffic(){
   const sel=$('#tdate');const cur=sel.value;
-  const q='/api/traffic?group='+_tgroup+(cur?'&date='+encodeURIComponent(cur):'');
+  const q='/api/traffic?group='+_tgroup+(cur?'&date='+encodeURIComponent(cur):'')+(_tdev?'&dev='+encodeURIComponent(_tdev):'');
   const d=await (await fetch(q)).json();
   sel.innerHTML=(d.dates&&d.dates.length?d.dates:[d.date]).map(x=>'<option'+(x===d.date?' selected':'')+'>'+x+'</option>').join('');
   if(cur&&d.dates&&d.dates.indexOf(cur)>=0)sel.value=cur;
   $('#tgd').classList.toggle('on',_tgroup==='domain');$('#tgh').classList.toggle('on',_tgroup==='host');
+  const devs=d.devices||[];
+  if(_tdev&&!devs.some(x=>x.ip===_tdev))_tdev=''; // 该设备当日无数据 → 回到全部
+  const allTotal=devs.reduce((s,x)=>s+x.total,0);
+  const subs=[{ip:'',device:'全部',total:allTotal}].concat(devs);
+  $('#tsubs').innerHTML=subs.map(s=>'<span class="sub'+(s.ip===_tdev?' on':'')+'" data-ip="'+s.ip+'" onclick="tdev(\\''+s.ip+'\\')">'+esc(s.device)+' <span class=pill>'+hum(s.total)+'</span></span>').join('');
   $('#tt').innerHTML=(d.rows||[]).map(r=>'<tr><td class="host">'+esc(r.key)+'</td><td class=muted data-sort="'+r.up+'">'+hum(r.up)+'</td><td class=muted data-sort="'+r.down+'">'+hum(r.down)+'</td><td data-sort="'+r.total+'">'+hum(r.total)+'</td></tr>').join('')||'<tr><td colspan=4 class=muted>（暂无数据，采样器刚启动，等几分钟累计）</td></tr>';
   $('#tmeta').textContent='共 '+(d.rows||[]).length+' 个域名 · 上行 '+hum(d.totalUp||0)+' · 下行 '+hum(d.totalDown||0);
   enhanceAll();
