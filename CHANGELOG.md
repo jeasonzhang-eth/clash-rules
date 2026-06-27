@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-06-28
+
+- rule-radar「所有连接」：新增「⛔ 断开全部连接」按钮，一键断开当前所有连接（逼其按现行规则重连）。按钮跟随设备子标签：选中某设备时仅断该设备连接、按钮文案与确认弹窗也随之变化，未选则断全部。新增 `POST /api/closeall`（可选 `source` 按来源 IP 过滤）。
+
 ## 2026-06-26
 
 - rule-radar：规则集 provider 名与文件名对齐——`NAME2FILE` 去掉 `OpenAI`(→AI Suite)、`HBO Max`(→Max) 两条别名（配合 `tools/sub-store/override.js` 把 provider 名改成 == 文件 basename）。流量统计/统计概览里不再出现「显示名找不到对应文件」的困惑，`fileOf`/`providerName` 直接按 basename 解析；仅保留 `AppleAI`/`PROXY` 两条纯大小写别名。

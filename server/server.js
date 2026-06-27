@@ -819,6 +819,28 @@ const server = http.createServer(async (req, res) => {
     } catch (e) {}
     return json(res, { ok: true });
   }
+  // 断开全部连接（可按来源 IP 过滤，对应「所有连接」页的设备子标签）
+  if (req.method === "POST" && p === "/api/closeall") {
+    const b = await body(req);
+    const src = (b.source || "").trim();
+    let n = 0;
+    try {
+      const data = await (
+        await fetch(CTRL + "/connections", {
+          headers: { Authorization: "Bearer " + SECRET },
+        })
+      ).json();
+      for (const c of data.connections || []) {
+        if (src && (c.metadata || {}).sourceIP !== src) continue;
+        await fetch(CTRL + "/connections/" + encodeURIComponent(c.id), {
+          method: "DELETE",
+          headers: { Authorization: "Bearer " + SECRET },
+        });
+        n++;
+      }
+    } catch (e) {}
+    return json(res, { ok: true, closed: n });
+  }
   if (p === "/" || p === "/index.html") {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(PAGE);
@@ -855,7 +877,7 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
   td{overflow:hidden;text-overflow:ellipsis}
   td.host{font-family:ui-monospace,Menlo,monospace;word-break:break-all}
   button{font:13px system-ui;border:0;border-radius:7px;padding:5px 11px;cursor:pointer;background:#262a33;color:#dfe3ea}
-  button.p{background:#3a6df0;color:#fff}button.d{background:#3a8a55;color:#fff}button:hover{filter:brightness(1.15)}
+  button.p{background:#3a6df0;color:#fff}button.d{background:#3a8a55;color:#fff}button.r{background:#b5483c;color:#fff}button:hover{filter:brightness(1.15)}
   .muted{color:#8b93a1}.pill{font-size:12px;background:#262a33;border-radius:10px;padding:1px 8px;color:#9aa3b2}
   textarea{width:100%;height:60vh;background:#0f1115;color:#cfe;border:1px solid #2a2e37;border-radius:8px;padding:10px;font-family:ui-monospace,Menlo,monospace;font-size:13px}
   select{background:#262a33;color:#e6e6e6;border:1px solid #2a2e37;border-radius:7px;padding:6px}
@@ -887,6 +909,7 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <div class="row"><button onclick="loadConns()">刷新</button>
    <label class="muted"><input type="checkbox" id="cauto" checked> 自动刷新(3s)</label>
    <button id="crename" style="display:none" onclick="renameDev()">✎ 重命名当前设备</button>
+   <button class="r" id="ccloseall" onclick="closeAll()">⛔ 断开全部连接</button>
    <span class="muted" id="cmeta"></span></div>
   <div class="row" id="csubs" style="gap:6px"></div>
   <table><thead><tr><th>设备</th><th>来源IP</th><th>目标域名</th><th>出口链</th><th>规则</th><th>上行</th><th>下行</th><th>操作</th></tr></thead><tbody id="tc" data-tkey="conn"></tbody></table>
@@ -985,8 +1008,19 @@ async function loadConns(){
   const subs=[{ip:'',device:'全部',count:d.total}].concat(_csources);
   $('#csubs').innerHTML=subs.map(s=>'<span class="sub'+(s.ip===_csrc?' on':'')+'" data-ip="'+s.ip+'" onclick="connSub(\\''+s.ip+'\\')">'+esc(s.device)+' <span class=pill>'+s.count+'</span></span>').join('');
   $('#crename').style.display=_csrc?'':'none';
+  const cur=_csources.find(s=>s.ip===_csrc);
+  $('#ccloseall').textContent=_csrc?('⛔ 断开'+esc((cur&&cur.device)||_csrc)+'全部连接'):'⛔ 断开全部连接';
   $('#cmeta').textContent='共 '+d.total+' 条连接 · '+_csources.length+' 个来源';
   renderConns();
+}
+async function closeAll(){
+  const cur=_csources.find(s=>s.ip===_csrc);
+  const who=_csrc?('设备「'+((cur&&cur.device)||_csrc)+'」的'):'全部';
+  if(!confirm('确定断开'+who+'连接？已建立的连接会立即中断并按当前规则重连。'))return;
+  toast('断开中…');
+  const r=await (await fetch('/api/closeall',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:_csrc})})).json();
+  toast('已断开 '+(r.closed||0)+' 条连接');
+  loadConns();
 }
 function connSub(ip){_csrc=ip;try{localStorage.setItem('rr_csrc',ip)}catch(e){}document.querySelectorAll('#csubs .sub').forEach(e=>e.classList.toggle('on',e.dataset.ip===ip));$('#crename').style.display=ip?'':'none';renderConns();}
 function renderConns(){
