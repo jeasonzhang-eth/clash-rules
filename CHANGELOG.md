@@ -2,6 +2,7 @@
 
 ## 2026-06-28
 
+- rules(MyProxy): 删除「Tailscale 控制平面走代理」(`controlplane.tailscale.com`/`login.tailscale.com`)。通用标准改为 **tailscale 全程直连**——tailscaled 用 fwmark 绕开 clash TUN，控制面走代理会被下发 fake-ip → 无处可路由；真实 IP 改由 AdGuard 对 tailscale 域名走 DoT 提供。配套直连规则见 `tools/sub-store/override.js` FIXED_IP_RULES。
 - rule-radar「所有连接」：新增「⛔ 断开全部连接」按钮，一键断开当前所有连接（逼其按现行规则重连）。按钮跟随设备子标签：选中某设备时仅断该设备连接、按钮文案与确认弹窗也随之变化，未选则断全部。新增 `POST /api/closeall`（可选 `source` 按来源 IP 过滤）。
 
 ## 2026-06-26

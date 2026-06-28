@@ -66,6 +66,7 @@ payload:
   - DOMAIN-SUFFIX,app.warp.dev
   - DOMAIN-SUFFIX,api2.immersivetranslate.com
   - DOMAIN-SUFFIX,ai.immersivetranslate.com
-  # —— Tailscale 控制平面（协调/登录/密钥交换，纯信令，走代理保证可靠上线）——
-  - DOMAIN,controlplane.tailscale.com
-  - DOMAIN,login.tailscale.com
+  # —— Tailscale 控制平面：改为直连（不再走代理）——
+  # tailscaled 用 fwmark 绕开 clash TUN，控制面走代理会被下发 fake-ip → 无处可路由。
+  # 通用标准改为：tailscale 全程直连，真实 IP 由 AdGuard 对 tailscale 域名走 DoT 提供。
+  # controlplane/login 直连规则见 override.js 的 FIXED_IP_RULES（DOMAIN-SUFFIX,tailscale.com,DIRECT）。
