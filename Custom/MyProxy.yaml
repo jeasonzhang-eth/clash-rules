@@ -70,3 +70,7 @@ payload:
   # tailscaled 用 fwmark 绕开 clash TUN，控制面走代理会被下发 fake-ip → 无处可路由。
   # 通用标准改为：tailscale 全程直连，真实 IP 由 AdGuard 对 tailscale 域名走 DoT 提供。
   # controlplane/login 直连规则见 override.js 的 FIXED_IP_RULES（DOMAIN-SUFFIX,tailscale.com,DIRECT）。
+  - DOMAIN-KEYWORD,samsung
+  - DOMAIN-SUFFIX,manus.im
+  - DOMAIN-SUFFIX,stripe.com
+  - DOMAIN-KEYWORD,aws
